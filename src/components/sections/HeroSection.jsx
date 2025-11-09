@@ -22,11 +22,11 @@ export const HeroSection = () => {
             both beautiful and functional.
           </p>
 
-          <div className="pt-4 opacity-0 animate-fade-in-delay-4">
+          {/* <div className="pt-4 opacity-0 animate-fade-in-delay-4">
             <a href="#projects" className="cosmic-button">
               View My Work
             </a>
-          </div>
+          </div> */}
         </div>
       </div>
 
