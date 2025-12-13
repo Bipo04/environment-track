@@ -13,22 +13,19 @@ export const LivePage = () => {
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden flex flex-col relative">
       {/* Background Effects */}
       <StarBackground />
-      
-      {/* Dark Overlay */}
-      <div className="absolute inset-0 bg-black/50 z-10"></div>
 
       {/* Navbar */}
-      <div className="relative z-50">
+      <div className="relative">
         <Navbar />
       </div>
 
       {/* Main Content */}
-      <main className="pt-20 pb-20 flex-grow relative z-20">
+      <main className="pt-20 pb-20 flex-grow relative">
         <LiveSection />
       </main>
 
       {/* Footer */}
-      <div className="relative z-20">
+      <div className="relative">
         <Footer />
       </div>
     </div>

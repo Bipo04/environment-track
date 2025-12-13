@@ -1,17 +1,23 @@
 import { cn } from "@/lib/utils";
 import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import logo from "@/assets/image.png";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { authService } from "@/services/authService";
 
 const navItems = [
   { name: "Home", href: "/" },
   { name: "Live Data", href: "/live" },
   { name: "Chart", href: "/chart" },
+  { name: "Private", href: "/private" },
 ];
 
 export const Navbar = () => {
+  const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -21,6 +27,21 @@ export const Navbar = () => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    // Check authentication status
+    setIsAuthenticated(authService.isAuthenticated());
+  }, []);
+
+  const handleAuthClick = () => {
+    if (isAuthenticated) {
+      authService.logout();
+      setIsAuthenticated(false);
+      navigate('/');
+    } else {
+      navigate('/login');
+    }
+  };
   return (
     <nav
       className={cn(
@@ -43,7 +64,7 @@ export const Navbar = () => {
         </a>
 
         {/* desktop nav */}
-        <div className="hidden md:flex space-x-8">
+        <div className="hidden md:flex items-center space-x-8">
           {navItems.map((item, key) => (
             <a
               key={key}
@@ -53,17 +74,29 @@ export const Navbar = () => {
               {item.name}
             </a>
           ))}
+          
+          {/* Auth button */}
+          <button
+            onClick={handleAuthClick}
+            className="text-foreground/80 hover:text-primary transition-colors duration-300"
+          >
+            {isAuthenticated ? 'Đăng xuất' : 'Đăng nhập'}
+          </button>
+          
+          <ThemeToggle />
         </div>
 
         {/* mobile nav */}
-
-        <button
-          onClick={() => setIsMenuOpen((prev) => !prev)}
-          className="md:hidden p-2 text-foreground z-50"
-          aria-label={isMenuOpen ? "Close Menu" : "Open Menu"}
-        >
-          {isMenuOpen ? <X size={24} /> : <Menu size={24} />}{" "}
-        </button>
+        <div className="md:hidden flex items-center gap-2">
+          <ThemeToggle />
+          <button
+            onClick={() => setIsMenuOpen((prev) => !prev)}
+            className="p-2 text-foreground z-50"
+            aria-label={isMenuOpen ? "Close Menu" : "Open Menu"}
+          >
+            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}{" "}
+          </button>
+        </div>
 
         <div
           className={cn(
@@ -85,6 +118,17 @@ export const Navbar = () => {
                 {item.name}
               </a>
             ))}
+            
+            {/* Mobile Auth button */}
+            <button
+              onClick={() => {
+                setIsMenuOpen(false);
+                handleAuthClick();
+              }}
+              className="text-foreground/80 hover:text-primary transition-colors duration-300"
+            >
+              {isAuthenticated ? 'Đăng xuất' : 'Đăng nhập'}
+            </button>
           </div>
         </div>
       </div>

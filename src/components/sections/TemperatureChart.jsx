@@ -163,7 +163,7 @@ const TemperatureChart = () => {
           padding: 20,
           boxWidth: 15,
           boxHeight: 15,
-          color: '#ffffff'
+          color: 'hsl(var(--foreground))'
         }
       },
       title: {
@@ -203,7 +203,7 @@ const TemperatureChart = () => {
         min: tempRange.min,
         max: tempRange.max,
         grid: {
-          color: 'rgba(255, 99, 132, 0.1)',
+          color: 'hsl(var(--border))',
         },
         ticks: {
           callback: function(value) {
@@ -255,7 +255,7 @@ const TemperatureChart = () => {
       },
       x: {
         grid: {
-          color: 'rgba(0, 0, 0, 0.05)',
+          color: 'hsl(var(--border))',
         },
         ticks: {
           font: {
@@ -263,7 +263,7 @@ const TemperatureChart = () => {
           },
           maxRotation: 45,
           minRotation: 45,
-          color: '#ffffff'
+          color: 'hsl(var(--foreground))'
         },
         title: {
           display: true,
@@ -272,7 +272,7 @@ const TemperatureChart = () => {
             size: 14,
             weight: 'bold'
           },
-          color: '#ffffff'
+          color: 'hsl(var(--foreground))'
         }
       }
     },
@@ -290,11 +290,11 @@ const TemperatureChart = () => {
         </h2>
         <div className="flex justify-center gap-6 flex-wrap">
           <div className="inline-flex items-center gap-3 bg-background/90 backdrop-blur px-8 py-4 rounded-xl shadow-lg border border-primary/20 hover:-translate-y-1 transition-all hover:border-primary/50">
-            <span className="text-white text-lg font-semibold">🌡️ Nhiệt độ:</span>
+            <span className="text-foreground text-lg font-semibold">🌡️ Nhiệt độ:</span>
             <span className="text-primary text-3xl font-extrabold tracking-wide">{sensorData.temperature.toFixed(1)}°C</span>
           </div>
           <div className="inline-flex items-center gap-3 bg-background/90 backdrop-blur px-8 py-4 rounded-xl shadow-lg border border-primary/20 hover:-translate-y-1 transition-all hover:border-primary/50">
-            <span className="text-white text-lg font-semibold">💧 Độ ẩm:</span>
+            <span className="text-foreground text-lg font-semibold">💧 Độ ẩm:</span>
             <span className="text-primary text-3xl font-extrabold tracking-wide">{sensorData.humidity.toFixed(1)}%</span>
           </div>
         </div>
@@ -320,10 +320,10 @@ const TemperatureChart = () => {
       </div>
 
       <div className="mt-6 text-center space-y-1">
-        <p className="text-white text-sm">
+        <p className="text-foreground/80 text-sm">
           📊 Hiển thị {temperatureData.length} điểm dữ liệu gần nhất (tối đa 20)
         </p>
-        <p className="text-white text-sm">
+        <p className="text-foreground/80 text-sm">
           ⏱ Tự động thêm dữ liệu khi nhận từ MQTT
         </p>
       </div>
