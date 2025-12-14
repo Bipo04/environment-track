@@ -30,7 +30,26 @@ const TemperatureChart = () => {
   const [temperatureData, setTemperatureData] = useState([]);
   const [humidityData, setHumidityData] = useState([]);
   const [timeLabels, setTimeLabels] = useState([]);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const prevTimestampRef = useRef('');
+
+  // Detect dark mode
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    
+    checkDarkMode();
+    
+    // Watch for theme changes
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
 
   // Thêm dữ liệu khi có dữ liệu mới từ MQTT
   useEffect(() => {
@@ -163,7 +182,7 @@ const TemperatureChart = () => {
           padding: 20,
           boxWidth: 15,
           boxHeight: 15,
-          color: 'hsl(var(--foreground))'
+          color: isDarkMode ? '#ffffff' : '#000000'
         }
       },
       title: {
@@ -203,7 +222,7 @@ const TemperatureChart = () => {
         min: tempRange.min,
         max: tempRange.max,
         grid: {
-          color: 'hsl(var(--border))',
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
         },
         ticks: {
           callback: function(value) {
@@ -255,7 +274,7 @@ const TemperatureChart = () => {
       },
       x: {
         grid: {
-          color: 'hsl(var(--border))',
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
         },
         ticks: {
           font: {
@@ -263,7 +282,7 @@ const TemperatureChart = () => {
           },
           maxRotation: 45,
           minRotation: 45,
-          color: 'hsl(var(--foreground))'
+          color: isDarkMode ? '#ffffff' : '#000000'
         },
         title: {
           display: true,
@@ -272,7 +291,7 @@ const TemperatureChart = () => {
             size: 14,
             weight: 'bold'
           },
-          color: 'hsl(var(--foreground))'
+          color: isDarkMode ? '#ffffff' : '#000000'
         }
       }
     },
