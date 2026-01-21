@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import logo from "@/assets/image.png";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { authService } from "@/services/authService";
@@ -10,7 +10,7 @@ const navItems = [
   { name: "Home", href: "/" },
   { name: "Live Data", href: "/live" },
   { name: "Chart", href: "/chart" },
-  { name: "Private", href: "/private" },
+  { name: "History", href: "/history" },
 ];
 
 export const Navbar = () => {
@@ -52,27 +52,27 @@ export const Navbar = () => {
       )}
     >
       <div className="container flex items-center justify-between">
-        <a
+        <Link
           className="text-xl font-bold text-primary flex items-center gap-2"
-          href="/"
+          to="/"
         >
           <img 
             src={logo} 
             alt="Portfolio Logo" 
             className="h-10 w-25 object-contain"
           />
-        </a>
+        </Link>
 
         {/* desktop nav */}
         <div className="hidden md:flex items-center space-x-8">
           {navItems.map((item, key) => (
-            <a
+            <Link
               key={key}
-              href={item.href}
+              to={item.href}
               className="text-foreground/80 hover:text-primary transition-colors duration-300"
             >
               {item.name}
-            </a>
+            </Link>
           ))}
           
           {/* Auth button */}
@@ -109,14 +109,14 @@ export const Navbar = () => {
         >
           <div className="flex flex-col space-y-8 text-xl">
             {navItems.map((item, key) => (
-              <a
+              <Link
                 key={key}
-                href={item.href}
+                to={item.href}
                 className="text-foreground/80 hover:text-primary transition-colors duration-300"
                 onClick={() => setIsMenuOpen(false)}
               >
                 {item.name}
-              </a>
+              </Link>
             ))}
             
             {/* Mobile Auth button */}

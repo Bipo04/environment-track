@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
-import useMqttService from '@/hooks/useMqttService';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 import GaugeCard from './GaugeCard';
 
 export const LiveSection = () => {
-  const sensorData = useMqttService();
+  const sensorData = useWebSocket();
 
   // Hàm chuyển đổi giá trị để phù hợp với thang đo gauge (0-1)
   const normalizeTemperature = (temp) => {

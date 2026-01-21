@@ -3,14 +3,15 @@ import { Home } from "./pages/Home";
 import { LivePage } from "./pages/LivePage";
 import { ChartPage } from "./pages/ChartPage";
 import { LoginPage } from "./pages/LoginPage";
-import { PrivatePage } from "./pages/PrivatePage";
+import { HistoryPage } from "./pages/HistoryPage";
 import { NotFound } from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Toaster } from "@/components/ui/toaster";
+import { WebSocketProvider } from "@/contexts/WebSocketContext";
 
 function App() {
   return (
-    <>
+    <WebSocketProvider>
       <Toaster />
       <BrowserRouter>
         <Routes>
@@ -19,17 +20,17 @@ function App() {
           <Route path="/chart" element={<ChartPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route 
-            path="/private" 
+            path="/history" 
             element={
               <ProtectedRoute>
-                <PrivatePage />
+                <HistoryPage />
               </ProtectedRoute>
             } 
           />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
-    </>
+    </WebSocketProvider>
   );
 }
 

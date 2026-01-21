@@ -11,7 +11,7 @@ import {
   Filler
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import useMqttService from '@/hooks/useMqttService';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
 // Đăng ký các component của Chart.js
 ChartJS.register(
@@ -26,7 +26,7 @@ ChartJS.register(
 );
 
 const TemperatureChart = () => {
-  const sensorData = useMqttService(); // Lấy dữ liệu từ MQTT
+  const sensorData = useWebSocket(); // Lấy dữ liệu từ WebSocket Context
   const [temperatureData, setTemperatureData] = useState([]);
   const [humidityData, setHumidityData] = useState([]);
   const [timeLabels, setTimeLabels] = useState([]);
