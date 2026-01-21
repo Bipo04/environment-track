@@ -101,13 +101,9 @@ export const LoginPage = () => {
               name="email"
               onChange={handleEmailChange}
               onBlur={handleEmailBlur}
-              className="w-full px-4 py-3 rounded-md border border-input bg-background focus:outline-hidden focus:ring-2 focus:ring-primary peer"
               placeholder=" "
             />
-            <label
-              htmlFor="email"
-              className="absolute left-4 top-3 text-muted-foreground transition-all duration-200 peer-focus:top-[-10px] peer-focus:left-3 peer-focus:text-xs peer-focus:text-primary peer-focus:bg-background peer-focus:px-1 peer-[:not(:placeholder-shown)]:top-[-10px] peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:bg-background peer-[:not(:placeholder-shown)]:px-1"
-            >
+            <label htmlFor="email">
               Email sinh viên
             </label>
             {emailError && (
@@ -122,13 +118,9 @@ export const LoginPage = () => {
               name="password"
               onChange={handlePasswordChange}
               onBlur={handlePasswordBlur}
-              className="w-full px-4 py-3 rounded-md border border-input bg-background focus:outline-hidden focus:ring-2 focus:ring-primary peer"
               placeholder=" "
             />
-            <label
-              htmlFor="password"
-              className="absolute left-4 top-3 text-muted-foreground transition-all duration-200 peer-focus:top-[-10px] peer-focus:left-3 peer-focus:text-xs peer-focus:text-primary peer-focus:bg-background peer-focus:px-1 peer-[:not(:placeholder-shown)]:top-[-10px] peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:bg-background peer-[:not(:placeholder-shown)]:px-1"
-            >
+            <label htmlFor="password">
               Mật khẩu
             </label>
             {passwordError && (

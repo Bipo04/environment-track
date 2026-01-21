@@ -1,31 +1,47 @@
-import GaugeChart from 'react-gauge-chart';
+import { useMemo } from 'react';
 import useMqttService from '@/hooks/useMqttService';
+import GaugeCard from './GaugeCard';
 
 export const LiveSection = () => {
   const sensorData = useMqttService();
 
   // Hàm chuyển đổi giá trị để phù hợp với thang đo gauge (0-1)
   const normalizeTemperature = (temp) => {
-    // Giả sử thang đo từ -10 đến 50 độ C
-    return (temp + 10) / 60;
+    // Temp: -10 to 60 °C (total: 70)
+    return Math.min(Math.max((temp + 10) / 70, 0), 1);
   };
 
   const normalizeHumidity = (humidity) => {
-    // Độ ẩm từ 0-100%
-    return humidity / 100;
+    // Humidity: 0-100%
+    return Math.min(humidity / 100, 1);
   };
 
   const normalizeLux = (lux) => {
-    // Giả sử thang đo từ 0 đến 10000 lux
-    return Math.min(lux / 10000, 1);
+    // Lux: 0 to 40000
+    return Math.min(lux / 40000, 1);
   };
 
-  const normalizeUV = (uv) => {
-    // Giả sử thang đo UV từ 0 đến 12
-    return uv / 12;
+  const normalizeBroadband = (value) => {
+    // Broadband: 0 to 65535 (TSL2591 16-bit)
+    return Math.min(value / 65535, 1);
   };
 
-  const gauges = [
+  const normalizeInfrared = (value) => {
+    // Infrared: 0 to 65535 (TSL2591 16-bit)
+    return Math.min(value / 65535, 1);
+  };
+
+  const normalizeUVI = (uv) => {
+    // UVI: 0 to 11
+    return Math.min(uv / 11, 1);
+  };
+
+  const normalizeUVAB = (value) => {
+    // UVA/UVB: 0 to 20
+    return Math.min(value / 20, 1);
+  };
+
+  const gauges = useMemo(() => [
     {
       title: 'Temperature (°C)',
       id: 'temperature-gauge',
@@ -45,44 +61,44 @@ export const LiveSection = () => {
       id: 'lux-gauge',
       colors: ['#FFBF00', '#00FF00'],
       percent: normalizeLux(sensorData.lux),
-      value: sensorData.lux.toFixed(0),
+      value: sensorData.lux,
     },
     {
       title: 'Broadband',
       id: 'broadband-gauge',
       colors: ['#FFBF00', '#00FF00'],
-      percent: normalizeLux(sensorData.broadband / 100),
-      value: sensorData.broadband.toFixed(1),
+      percent: normalizeBroadband(sensorData.broadband),
+      value: sensorData.broadband,
     },
     {
       title: 'Infrared',
       id: 'infrared-gauge',
       colors: ['#FFBF00', '#00FF00'],
-      percent: normalizeLux(sensorData.infrared / 100),
-      value: sensorData.infrared.toFixed(1),
+      percent: normalizeInfrared(sensorData.infrared),
+      value: sensorData.infrared,
     },
     {
       title: 'UV Index',
       id: 'uvi-gauge',
       colors: ['#00FF00', '#FFBF00', '#FF0000'],
-      percent: normalizeUV(sensorData.UVI),
-      value: sensorData.UVI.toFixed(1),
+      percent: normalizeUVI(sensorData.UVI),
+      value: sensorData.UVI.toFixed(2),
     },
     {
       title: 'UVA',
       id: 'uva-gauge',
       colors: ['#00FF00', '#FFBF00', '#FF0000'],
-      percent: normalizeUV(sensorData.UVA / 10),
-      value: sensorData.UVA.toFixed(1),
+      percent: normalizeUVAB(sensorData.UVA),
+      value: sensorData.UVA.toFixed(2),
     },
     {
       title: 'UVB',
       id: 'uvb-gauge',
       colors: ['#00FF00', '#FFBF00', '#FF0000'],
-      percent: normalizeUV(sensorData.UVB / 10),
-      value: sensorData.UVB.toFixed(1),
+      percent: normalizeUVAB(sensorData.UVB),
+      value: sensorData.UVB.toFixed(2),
     },
-  ];
+  ], [sensorData]);
 
   return (
     <section className="py-24 px-4 relative bg-secondary/30">
@@ -97,24 +113,7 @@ export const LiveSection = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {gauges.map((gauge) => (
-            <div
-              key={gauge.id}
-              className="bg-card p-6 rounded-lg shadow-lg border border-border/50"
-            >
-              <h2 className="text-lg font-semibold text-center mb-4">
-                {gauge.title}
-              </h2>
-              <GaugeChart
-                id={gauge.id}
-                nrOfLevels={5}
-                colors={gauge.colors}
-                arcWidth={0.3}
-                percent={gauge.percent}
-                textColor="hsl(var(--foreground))"
-                formatTextValue={() => gauge.value}
-                animate={false}
-              />
-            </div>
+            <GaugeCard key={gauge.id} gauge={gauge} />
           ))}
         </div>
       </div>

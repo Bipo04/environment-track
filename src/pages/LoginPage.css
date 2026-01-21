@@ -74,6 +74,7 @@
   outline: none;
   transition: all 0.3s ease;
   background: white;
+  color: #000;
 }
 
 .login-card input:focus {
