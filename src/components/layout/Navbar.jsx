@@ -9,6 +9,7 @@ import { authService } from "@/services/authService";
 const navItems = [
   { name: "Home", href: "/" },
   { name: "Live Data", href: "/live" },
+  { name: "Dashboard", href: "/dashboard" },
   { name: "Chart", href: "/chart" },
   { name: "History", href: "/history" },
 ];

@@ -4,6 +4,7 @@ import { LivePage } from "./pages/LivePage";
 import { ChartPage } from "./pages/ChartPage";
 import { LoginPage } from "./pages/LoginPage";
 import { HistoryPage } from "./pages/HistoryPage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { NotFound } from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Toaster } from "@/components/ui/toaster";
@@ -17,6 +18,7 @@ function App() {
         <Routes>
           <Route index element={<Home />} />
           <Route path="/live" element={<LivePage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/chart" element={<ChartPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route 

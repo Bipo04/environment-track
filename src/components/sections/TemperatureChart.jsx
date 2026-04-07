@@ -25,7 +25,7 @@ ChartJS.register(
   Filler
 );
 
-const TemperatureChart = () => {
+const TemperatureChart = ({ compact = false }) => {
   const sensorData = useWebSocket(); // Lấy dữ liệu từ WebSocket Context
   const [temperatureData, setTemperatureData] = useState([]);
   const [humidityData, setHumidityData] = useState([]);
@@ -300,6 +300,37 @@ const TemperatureChart = () => {
       easing: 'easeInOutQuart'
     }
   };
+
+  if (compact) {
+    return (
+      <div className="bg-card/80 backdrop-blur-sm rounded-2xl border border-border/50 p-4">
+        {/* Compact header */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-foreground">📈 Biểu Đồ Nhiệt Độ & Độ Ẩm</span>
+            <span className="text-[10px] text-primary font-semibold bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">Realtime</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">🌡️ <b className="text-primary">{sensorData.temperature.toFixed(1)}°C</b></span>
+            <span className="text-xs text-muted-foreground">💧 <b className="text-primary">{sensorData.humidity.toFixed(1)}%</b></span>
+            <button
+              onClick={resetData}
+              className="text-[10px] px-2 py-1 border border-border bg-background/50 rounded-lg text-foreground hover:bg-background/80 transition-all"
+            >
+              🔄 Reset
+            </button>
+            <div className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+              <span className="text-[10px] text-muted-foreground">{sensorData.timestamp}</span>
+            </div>
+          </div>
+        </div>
+        <div className="bg-background/70 backdrop-blur rounded-xl p-3 border border-border/50 h-[220px]">
+          <Line data={chartData} options={chartOptions} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto p-8 bg-card/80 backdrop-blur-sm rounded-2xl shadow-2xl border border-border/50">
