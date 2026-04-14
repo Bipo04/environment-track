@@ -2,8 +2,6 @@
 import { Navbar } from "../components/layout/Navbar";
 import { Footer } from "../components/layout/Footer";
 
-// Effects
-import { StarBackground } from "@/components/effects/StarBackground";
 
 // Sections
 import TemperatureChart from "@/components/sections/TemperatureChart";
@@ -11,8 +9,6 @@ import TemperatureChart from "@/components/sections/TemperatureChart";
 export const ChartPage = () => {
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden flex flex-col relative">
-      {/* Background Effects */}
-      <StarBackground />
 
       {/* Navbar */}
       <div className="relative">

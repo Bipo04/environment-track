@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { cn } from "@/lib/utils";
 
 const DEVICE_TYPES = [
-  'Cảm biến nhiệt độ & độ ẩm',
-  'Cảm biến ánh sáng',
-  'Cảm biến tia UV',
-  'Cảm biến âm thanh',
-  'Đa cảm biến (tất cả)',
+  'Cảm biến môi trường',
+  'Cảm biến không khí'
 ];
 
 const INITIAL_DEVICES = [
@@ -14,17 +13,19 @@ const INITIAL_DEVICES = [
   { id: 'DEV-003', type: 'Đa cảm biến (tất cả)', location: 'Sân thượng', status: 'offline' },
 ];
 
-const typeIcons = {
-  'Cảm biến nhiệt độ & độ ẩm': '🌡️',
-  'Cảm biến ánh sáng': '☀️',
-  'Cảm biến tia UV': '🔆',
-  'Cảm biến âm thanh': '🎙️',
-};
-
 // ─── Registration Modal ────────────────────────────────────────────────
 const RegisterModal = ({ onClose, onConfirm }) => {
-  const [form, setForm] = useState({ id: '', type: DEVICE_TYPES[4], location: '' });
+  const [form, setForm] = useState({ id: '', type: DEVICE_TYPES[0], location: '' });
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
 
   const handleSubmit = () => {
     if (!form.id.trim() || !form.location.trim()) {
@@ -34,7 +35,7 @@ const RegisterModal = ({ onClose, onConfirm }) => {
     onConfirm({ ...form, id: form.id.trim(), location: form.location.trim(), status: 'online' });
   };
 
-  return (
+  return createPortal(
     /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -46,9 +47,6 @@ const RegisterModal = ({ onClose, onConfirm }) => {
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10">
-              <span className="text-2xl">📡</span>
-            </div>
             <div>
               <h2 className="text-base font-bold text-foreground">Đăng ký thiết bị mới</h2>
               <p className="text-xs text-muted-foreground">Điền thông tin bên dưới để thêm thiết bị</p>
@@ -64,7 +62,7 @@ const RegisterModal = ({ onClose, onConfirm }) => {
 
         {error && (
           <div className="mb-4 text-sm text-red-400 bg-red-500/10 px-3 py-2 rounded-xl border border-red-500/20">
-            ⚠️ {error}
+            {error}
           </div>
         )}
 
@@ -77,7 +75,7 @@ const RegisterModal = ({ onClose, onConfirm }) => {
             <input
               id="modal-input-device-id"
               type="text"
-              placeholder="VD: DEV-004"
+              placeholder="VD: kankyou"
               value={form.id}
               onChange={e => setForm(p => ({ ...p, id: e.target.value }))}
               className="w-full px-4 py-2.5 text-sm rounded-xl bg-background/80 border border-border/60 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/20 transition-all"
@@ -109,7 +107,7 @@ const RegisterModal = ({ onClose, onConfirm }) => {
             <input
               id="modal-input-device-location"
               type="text"
-              placeholder="VD: Phòng 201 - Tầng 2"
+              placeholder="VD: Phòng lab"
               value={form.location}
               onChange={e => setForm(p => ({ ...p, location: e.target.value }))}
               className="w-full px-4 py-2.5 text-sm rounded-xl bg-background/80 border border-border/60 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/20 transition-all"
@@ -135,12 +133,13 @@ const RegisterModal = ({ onClose, onConfirm }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
 // ─── Sidebar ────────────────────────────────────────────────────────────
-export const DeviceSidebar = () => {
+export const DeviceSidebar = ({ className = "" }) => {
   const [devices, setDevices] = useState(INITIAL_DEVICES);
   const [showModal, setShowModal] = useState(false);
 
@@ -155,13 +154,20 @@ export const DeviceSidebar = () => {
 
   return (
     <>
-      <div className="w-64 shrink-0 flex flex-col border-r border-border/50 bg-card/60 backdrop-blur-sm overflow-hidden">
+      <div
+        className={cn(
+          "w-64 shrink-0 flex flex-col border-r border-border/50 bg-card/60 backdrop-blur-sm overflow-hidden",
+          className
+        )}
+      >
         {/* Header */}
         <div className="px-4 py-4 border-b border-border/50 shrink-0">
           <div className="flex items-center justify-center gap-2 mb-1">
             <h2 className="text-sm font-bold text-foreground">Danh Sách Thiết Bị</h2>
           </div>
-          <p className="text-xs text-muted-foreground">{devices.length} thiết bị đã đăng ký</p>
+          <div className="flex items-center justify-center">
+            <p className="text-xs text-muted-foreground">{devices.length} thiết bị đã đăng ký</p>
+          </div>
         </div>
 
         {/* List */}
@@ -169,11 +175,14 @@ export const DeviceSidebar = () => {
           {devices.map((device) => (
             <div
               key={device.id}
-              className="p-3 rounded-xl border border-border/50 bg-background/60 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200 cursor-pointer"
+              className="mx-auto w-full p-3 rounded-xl border border-border/50 bg-background/60 hover:border-primary/40 hover:bg-primary/5 transition-all duration-200 cursor-pointer"
             >
-              <div className="flex items-center gap-2 mb-1">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-foreground truncate">{device.id}</p>
+              <div className="mb-1 flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <p className="shrink-0 text-xs font-bold text-foreground">{device.id}</p>
+                  <p className="min-w-0 truncate text-[10px] text-muted-foreground leading-snug">
+                    {device.type}
+                  </p>
                 </div>
                 <span
                   className={`w-2 h-2 rounded-full shrink-0 ${
@@ -183,8 +192,8 @@ export const DeviceSidebar = () => {
                   }`}
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground pl-6 truncate leading-snug">
-                {device.type}
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                {device.location}
               </p>
             </div>
           ))}

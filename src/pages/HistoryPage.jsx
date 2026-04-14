@@ -1,6 +1,5 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { StarBackground } from "@/components/effects/StarBackground";
 import { useState, useEffect } from "react";
 import { historyService } from "@/services/historyService";
 import { useNavigate } from "react-router-dom";
@@ -102,7 +101,6 @@ export const HistoryPage = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden flex flex-col">
-      <StarBackground />
       <Navbar />
 
       <main className="pt-32 pb-20 px-4 flex-grow relative">

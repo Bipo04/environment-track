@@ -1,4 +1,6 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --color-border: hsl(var(--border));
@@ -9,6 +11,10 @@
   --color-primary-foreground: hsl(var(--primary-foreground));
 
   --color-card: hsl(var(--card));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
 
   --animate-float: float 6s ease-in-out infinite;
   --animate-pulse-subtle: pulse-subtle 4s ease-in-out infinite;
@@ -64,27 +70,35 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 210 33% 98%;
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
+    --muted: 210 32% 95%;
+    --muted-foreground: 222 14% 43%;
+    --accent: 190 88% 45%;
+    --accent-foreground: 210 40% 98%;
 
     --primary: 250 47% 60%;
     --primary-foreground: 210 40% 98%;
 
-    --border: 214 32% 91%;
+    --border: 214 32% 88%;
   }
 
   .dark {
-    --background: 222 47% 4%;
+    --background: 222 40% 7%;
     --foreground: 213 31% 91%;
 
-    --card: 222 47% 8%;
+    --card: 222 34% 11%;
+    --muted: 222 22% 16%;
+    --muted-foreground: 216 15% 69%;
+    --accent: 190 95% 55%;
+    --accent-foreground: 213 31% 91%;
 
     --primary: 250 65% 65%;
     --primary-foreground: 213 31% 91%;
 
-    --border: 217 33% 20%;
+    --border: 217 25% 22%;
   }
 
   * {
@@ -97,7 +111,29 @@
 
   body {
     @apply bg-background text-foreground transition-colors duration-300;
+    background-image:
+      radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 28%),
+      radial-gradient(circle at top right, rgba(168, 85, 247, 0.08), transparent 26%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 55%);
+    background-attachment: fixed;
+    font-family: "Space Grotesk", "Segoe UI", sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at top left, rgba(34, 211, 238, 0.1), transparent 28%),
+      radial-gradient(circle at top right, rgba(168, 85, 247, 0.12), transparent 24%),
+      linear-gradient(180deg, rgba(15, 23, 42, 0.72), transparent 55%);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Plus Jakarta Sans", "Space Grotesk", sans-serif;
   }
 }
 
@@ -154,9 +190,40 @@
   box-shadow: 0 0 10px 5px rgba(255, 255, 255, 0.3);
 }
 
+@layer utilities {
+  .rounded-lg {
+    border-radius: 0.6rem;
+  }
+
+  .rounded-xl {
+    border-radius: 0.8rem;
+  }
+
+  .rounded-2xl {
+    border-radius: 1rem;
+  }
+
+  .rounded-3xl {
+    border-radius: 1.15rem;
+  }
+
+  .rounded-\[24px\] {
+    border-radius: 1rem;
+  }
+
+  .rounded-\[26px\] {
+    border-radius: 1rem;
+  }
+
+  .rounded-\[30px\] {
+    border-radius: 1.1rem;
+  }
+}
+
 #root {
   max-width: 100%;
   margin: 0 auto;
   padding: 0;
-  text-align: center;
+  min-height: 100vh;
+  text-align: left;
 }
