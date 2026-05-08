@@ -7,11 +7,9 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { authService } from "@/services/authService";
 
 const navItems = [
-  { name: "Home", href: "/" },
-  { name: "Live Data", href: "/live" },
-  { name: "Dashboard", href: "/dashboard" },
-  { name: "Chart", href: "/chart" },
-  { name: "History", href: "/history" },
+  { name: "Trang chủ", href: "/" },
+  { name: "Dữ liệu live", href: "/dashboard" },
+  { name: "Lịch sử", href: "/history" },
 ];
 
 export const Navbar = () => {

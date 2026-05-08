@@ -24,7 +24,7 @@ import {
 import { Line } from "react-chartjs-2";
 import { cn } from "@/lib/utils";
 import { useFakeSensorData } from "@/hooks/useFakeSensorData";
-import { useWebSocket } from "@/contexts/WebSocketContext";
+import { useDeviceMqttData } from "@/hooks/useDeviceMqttData";
 import { TempHumidCard } from "./dashboard/TempHumidCard";
 import { LightCard } from "./dashboard/LightCard";
 import { UVCard } from "./dashboard/UVCard";
@@ -119,7 +119,7 @@ const TAB_CONFIG = {
         label: "UVA",
         color: "#d946ef",
         unit: " uva",
-        yAxisID: "y",
+        yAxisID: "y1",
       },
       {
         key: "uvb",
@@ -129,8 +129,8 @@ const TAB_CONFIG = {
         yAxisID: "y1",
       },
     ],
-    axisLabel: "UVI / UVA",
-    secondaryAxisLabel: "UVB",
+    axisLabel: "UVI",
+    secondaryAxisLabel: "UVA / UVB",
   },
   sound: {
     label: "Âm thanh",
@@ -150,6 +150,20 @@ const TAB_CONFIG = {
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const parseLooseNumber = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+};
 
 const withAlpha = (hex, alpha) => {
   const normalized = hex.replace("#", "");
@@ -173,15 +187,15 @@ const wave = (index, speed, offset = 0) =>
   Math.cos(index * speed * 0.42 + offset) * 0.4;
 
 const normalizeSnapshot = (snapshot) => ({
-  temperature: Number(snapshot?.temperature) || 0,
-  humidity: Number(snapshot?.humidity) || 0,
-  lux: Number(snapshot?.lux) || 0,
-  bb: Number(snapshot?.bb ?? snapshot?.broadband) || 0,
-  fr: Number(snapshot?.fr ?? snapshot?.infrared) || 0,
-  uvi: Number(snapshot?.uvi ?? snapshot?.UVI) || 0,
-  uva: Number(snapshot?.uva ?? snapshot?.UVA) || 0,
-  uvb: Number(snapshot?.uvb ?? snapshot?.UVB) || 0,
-  sound: Number(snapshot?.sound) || 0,
+  temperature: parseLooseNumber(snapshot?.temperature),
+  humidity: parseLooseNumber(snapshot?.humidity),
+  lux: parseLooseNumber(snapshot?.lux),
+  bb: parseLooseNumber(snapshot?.bb ?? snapshot?.broadband),
+  fr: parseLooseNumber(snapshot?.fr ?? snapshot?.infrared),
+  uvi: parseLooseNumber(snapshot?.uvi ?? snapshot?.UVI),
+  uva: parseLooseNumber(snapshot?.uva ?? snapshot?.UVA),
+  uvb: parseLooseNumber(snapshot?.uvb ?? snapshot?.UVB),
+  sound: parseLooseNumber(snapshot?.sound),
   timestamp: snapshot?.timestamp || "",
 });
 
@@ -320,6 +334,53 @@ const formatNumber = (value, digits = 0) =>
     maximumFractionDigits: digits,
   });
 
+const roundMetricValue = (key, value) => {
+  const numericValue = Number(value) || 0;
+
+  switch (key) {
+    case "temperature":
+      return Number(numericValue.toFixed(1));
+    case "uvi":
+      return Number(numericValue.toFixed(2));
+    case "humidity":
+    case "lux":
+    case "bb":
+    case "fr":
+    case "sound":
+      return Math.round(numericValue);
+    case "uva":
+    case "uvb":
+      return Number(numericValue.toFixed(2));
+    default:
+      return numericValue;
+  }
+};
+
+const getTrendDeadzone = (key) => {
+  switch (key) {
+    case "temperature":
+    case "uvi":
+      return 0.05;
+    case "humidity":
+    case "lux":
+    case "bb":
+    case "fr":
+    case "sound":
+      return 0.5;
+    case "uva":
+    case "uvb":
+      return 0.005;
+    default:
+      return 0.01;
+  }
+};
+
+const formatAxisTick = (value) =>
+  Number(value).toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  });
+
 const formatMetricValue = (key, value, compact = false) => {
   const numericValue = Number(value) || 0;
 
@@ -335,7 +396,7 @@ const formatMetricValue = (key, value, compact = false) => {
     case "fr":
       return `${compact ? formatCompact(numericValue) : formatNumber(numericValue, 0)} fr`;
     case "uvi":
-      return `${formatNumber(numericValue, 1)} UVI`;
+      return `${formatNumber(numericValue, 2)} UVI`;
     case "uva":
       return `${formatNumber(numericValue, 2)} uva`;
     case "uvb":
@@ -348,6 +409,10 @@ const formatMetricValue = (key, value, compact = false) => {
 };
 
 const formatDelta = (key, value) => {
+  if (Math.abs(value) < getTrendDeadzone(key)) {
+    value = 0;
+  }
+
   const absValue = Math.abs(value);
   const prefix = value >= 0 ? "+" : "-";
 
@@ -363,7 +428,7 @@ const formatDelta = (key, value) => {
     case "fr":
       return `${prefix}${absValue >= 1000 ? formatCompact(absValue) : formatNumber(absValue, 0)} fr`;
     case "uvi":
-      return `${prefix}${formatNumber(absValue, 1)} UVI`;
+      return `${prefix}${formatNumber(absValue, 2)} UVI`;
     case "uva":
       return `${prefix}${formatNumber(absValue, 2)} uva`;
     case "uvb":
@@ -403,6 +468,7 @@ const formatAxisTimestamp = (time, rangeKey) => {
   return new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
   }).format(time);
 };
 
@@ -422,6 +488,43 @@ const formatRelativeRefresh = (time) => {
 
 const getMetricSeries = (entries, key) => entries.map((entry) => Number(entry[key]) || 0);
 
+const MIN_CHART_SPAN = {
+  temperature: 2,
+  humidity: 8,
+  lux: 500,
+  bb: 3000,
+  fr: 1500,
+  uvi: 1.5,
+  uva: 1,
+  uvb: 0.3,
+  sound: 8,
+};
+
+const getAxisBounds = (entries, datasets, axisId) => {
+  const axisDatasets = datasets.filter((dataset) => dataset.yAxisID === axisId);
+  if (!axisDatasets.length) {
+    return {};
+  }
+
+  const values = axisDatasets.flatMap((dataset) => getMetricSeries(entries, dataset.key));
+  if (!values.length) {
+    return {};
+  }
+
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const dataSpan = maxValue - minValue;
+  const minSpan = Math.max(...axisDatasets.map((dataset) => MIN_CHART_SPAN[dataset.key] || 1));
+  const finalSpan = Math.max(dataSpan, minSpan);
+  const midpoint = (minValue + maxValue) / 2;
+  const padding = finalSpan * 0.12;
+
+  return {
+    min: midpoint - finalSpan / 2 - padding,
+    max: midpoint + finalSpan / 2 + padding,
+  };
+};
+
 const getTrend = (entries, key, fallbackValue = 0) => {
   if (entries.length < 2) {
     return 0;
@@ -431,7 +534,8 @@ const getTrend = (entries, key, fallbackValue = 0) => {
   const baseline = entries[baselineIndex][key] ?? fallbackValue;
   const current = entries[entries.length - 1][key] ?? fallbackValue;
 
-  return current - baseline;
+  const delta = current - baseline;
+  return Math.abs(delta) < getTrendDeadzone(key) ? 0 : delta;
 };
 
 const getStatusStyles = (type, value, humidity = 0) => {
@@ -748,11 +852,13 @@ const MetricBarRow = ({
   ratio,
   suffix,
   variant = "default",
+  align = "left",
 }) => {
   const isPanel = variant === "panel";
+  const isRightAligned = align === "right";
 
   return (
-    <div>
+    <div className={cn(isRightAligned && "text-right")}>
       <div className="mb-2 flex items-center justify-between gap-3">
         <span
           className={cn(
@@ -785,6 +891,7 @@ const MetricBarRow = ({
           className="h-full rounded-none transition-all duration-500"
           style={{
             width: `${ratio * 100}%`,
+            marginLeft: isRightAligned ? "auto" : undefined,
             background: `linear-gradient(90deg, ${withAlpha(accent, 0.92)}, ${accent})`,
             boxShadow: isPanel ? "none" : `0 0 12px ${withAlpha(accent, 0.35)}`,
           }}
@@ -994,7 +1101,7 @@ const UvOverviewCard = ({ uva, uvb, uvi, status }) => (
         value={formatNumber(uva, 2)}
         suffix=""
         accent="#9333ea"
-        ratio={getProgressRatio("uva", uva)}
+        ratio={clamp(uva / 20, 0, 1)}
         variant="panel"
       />
       <MetricBarRow
@@ -1002,12 +1109,12 @@ const UvOverviewCard = ({ uva, uvb, uvi, status }) => (
         value={formatNumber(uvb, 2)}
         suffix=""
         accent="#a78bfa"
-        ratio={getProgressRatio("uvb", uvb)}
+        ratio={clamp(uvb / 20, 0, 1)}
         variant="panel"
       />
       <MetricBarRow
         label="UV Index"
-        value={formatNumber(uvi, 1)}
+        value={formatNumber(uvi, 2)}
         suffix=""
         accent="#ec4899"
         ratio={getProgressRatio("uvi", uvi)}
@@ -1280,6 +1387,38 @@ const DetailCard = ({
   </article>
 );
 
+const EmptyDashboardState = ({ title, description, selectedDevice }) => (
+  <div className="mt-6 lg:mt-8">
+    <div className="flex min-h-[420px] items-center justify-center px-6 text-center sm:px-8 lg:px-10">
+      <div className="max-w-lg">
+        <p className="text-xl font-semibold tracking-[-0.03em] text-foreground">{title}</p>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">{description}</p>
+        {selectedDevice ? (
+          <p className="mt-2 text-xs text-muted-foreground">Thiết bị đang chọn: {selectedDevice.id}</p>
+        ) : null}
+      </div>
+    </div>
+  </div>
+);
+
+const DeviceHeader = ({ selectedDevice, empty = false }) => {
+  if (!selectedDevice) {
+    return null;
+  }
+
+  return (
+    <div className="max-w-3xl">
+      <h1 className="max-w-2xl text-3xl font-semibold leading-tight tracking-[-0.03em] text-foreground sm:mt-2 sm:text-4xl sm:leading-tight sm:tracking-[-0.05em] lg:text-5xl">
+        {selectedDevice.type}
+      </h1>
+      <div className="mt-4 space-y-1 text-sm leading-6 text-muted-foreground">
+        <p>ID: {selectedDevice.id}</p>
+        <p>Vị trí: {selectedDevice.location}</p>
+      </div>
+    </div>
+  );
+};
+
 export const LegacyDashboardSection = () => {
   const sensorData = useFakeSensorData();
 
@@ -1340,15 +1479,14 @@ export const LegacyDashboardSection = () => {
   );
 };
 
-export const DashboardSection = () => {
-  const liveSnapshot = useWebSocket();
-  const fallbackSnapshot = useFakeSensorData();
-  const currentSnapshot = normalizeSnapshot(
-    hasLiveSensorData(liveSnapshot) ? liveSnapshot : fallbackSnapshot
-  );
-  const dataSource = hasLiveSensorData(liveSnapshot) ? "Live socket" : "Simulated feed";
+const EnvironmentSensorDashboard = ({
+  devices = [],
+  selectedDevice = null,
+  selectedDeviceSnapshot = null,
+}) => {
+  const currentSnapshot = normalizeSnapshot(selectedDeviceSnapshot ?? {});
 
-  const [history, setHistory] = useState(() => buildSeedHistory(currentSnapshot));
+  const [historyByDevice, setHistoryByDevice] = useState({});
   const [selectedTab, setSelectedTab] = useState("tempHumidity");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const lastSampleKey = useRef("");
@@ -1370,7 +1508,13 @@ export const DashboardSection = () => {
   }, []);
 
   useEffect(() => {
+    if (!selectedDevice) {
+      lastSampleKey.current = "";
+      return;
+    }
+
     const sampleKey = [
+      selectedDevice.id,
       currentSnapshot.temperature,
       currentSnapshot.humidity,
       currentSnapshot.lux,
@@ -1389,45 +1533,107 @@ export const DashboardSection = () => {
 
     lastSampleKey.current = sampleKey;
 
-    setHistory((previous) => {
+    setHistoryByDevice((previous) => {
+      const previousHistory = previous[selectedDevice.id] || [];
       const nextEntry = {
         time: Date.now(),
-        temperature: currentSnapshot.temperature,
-        humidity: currentSnapshot.humidity,
-        lux: currentSnapshot.lux,
-        bb: currentSnapshot.bb,
-        fr: currentSnapshot.fr,
-        uvi: currentSnapshot.uvi,
-        uva: currentSnapshot.uva,
-        uvb: currentSnapshot.uvb,
-        sound: currentSnapshot.sound,
+        temperature: roundMetricValue("temperature", currentSnapshot.temperature),
+        humidity: roundMetricValue("humidity", currentSnapshot.humidity),
+        lux: roundMetricValue("lux", currentSnapshot.lux),
+        bb: roundMetricValue("bb", currentSnapshot.bb),
+        fr: roundMetricValue("fr", currentSnapshot.fr),
+        uvi: roundMetricValue("uvi", currentSnapshot.uvi),
+        uva: roundMetricValue("uva", currentSnapshot.uva),
+        uvb: roundMetricValue("uvb", currentSnapshot.uvb),
+        sound: roundMetricValue("sound", currentSnapshot.sound),
       };
 
-      const trimmed = [...previous, nextEntry].filter(
+      const trimmed = [...previousHistory, nextEntry].filter(
         (entry) => entry.time >= Date.now() - HISTORY_WINDOW
       );
 
-      return trimmed.slice(-2600);
+      return {
+        ...previous,
+        [selectedDevice.id]: trimmed.slice(-2600),
+      };
     });
   }, [
-    currentSnapshot.temperature,
-    currentSnapshot.humidity,
-    currentSnapshot.lux,
-    currentSnapshot.bb,
-    currentSnapshot.fr,
-    currentSnapshot.uvi,
-    currentSnapshot.uva,
-    currentSnapshot.uvb,
-    currentSnapshot.sound,
-    currentSnapshot.timestamp,
+    selectedDevice,
+    currentSnapshot?.temperature,
+    currentSnapshot?.humidity,
+    currentSnapshot?.lux,
+    currentSnapshot?.bb,
+    currentSnapshot?.fr,
+    currentSnapshot?.uvi,
+    currentSnapshot?.uva,
+    currentSnapshot?.uvb,
+    currentSnapshot?.sound,
+    currentSnapshot?.timestamp,
   ]);
 
-  const rangeHistory = history.slice(-120);
-  const chartHistory = history.slice(-20);
-  const cardHistory = history.slice(-18);
+  const history = selectedDevice ? historyByDevice[selectedDevice.id] || [] : [];
+  const displayHistory = history.length
+    ? history
+    : [
+        {
+          time: Date.now(),
+          temperature: roundMetricValue("temperature", currentSnapshot.temperature),
+          humidity: roundMetricValue("humidity", currentSnapshot.humidity),
+          lux: roundMetricValue("lux", currentSnapshot.lux),
+          bb: roundMetricValue("bb", currentSnapshot.bb),
+          fr: roundMetricValue("fr", currentSnapshot.fr),
+          uvi: roundMetricValue("uvi", currentSnapshot.uvi),
+          uva: roundMetricValue("uva", currentSnapshot.uva),
+          uvb: roundMetricValue("uvb", currentSnapshot.uvb),
+          sound: roundMetricValue("sound", currentSnapshot.sound),
+        },
+      ];
+  const rangeHistory = displayHistory.slice(-120);
+  const chartHistory = displayHistory.slice(-20);
+  const cardHistory = displayHistory.slice(-18);
   const tabDefinition = TAB_CONFIG[selectedTab];
-  const latestEntry = history[history.length - 1];
-  const previousEntry = history[Math.max(0, history.length - 2)] || latestEntry;
+
+  const emptyStateTitle = !devices.length
+    ? "Chưa đăng ký thiết bị nào"
+    : !selectedDevice
+      ? "Chưa chọn thiết bị"
+      : `Thiết bị ${selectedDevice.id} chưa có dữ liệu`;
+  const emptyStateDescription = !devices.length
+    ? "Đăng ký ít nhất một thiết bị ở thanh bên trái để bắt đầu theo dõi dữ liệu môi trường."
+    : !selectedDevice
+      ? "Chọn một thiết bị trong danh sách để xem dữ liệu của thiết bị đó."
+      : "Chọn một thiết bị cảm biến môi trường để hiển thị giao diện theo dõi.";
+
+  if (!devices.length || !selectedDevice) {
+    return (
+      <section className="relative overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 opacity-35">
+          <div className="absolute left-[10%] top-16 h-56 w-56 rounded-full bg-cyan-400/10 blur-[120px] dark:bg-cyan-500/8" />
+          <div className="absolute right-[6%] top-32 h-64 w-64 rounded-full bg-fuchsia-400/8 blur-[130px] dark:bg-fuchsia-500/8" />
+          <div className="absolute bottom-16 left-1/3 h-72 w-72 rounded-full bg-emerald-400/8 blur-[150px] dark:bg-emerald-500/6" />
+        </div>
+
+        <div className="container relative px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+          <div className="p-3 sm:p-5 lg:p-8">
+            {selectedDevice ? (
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                <DeviceHeader selectedDevice={selectedDevice} />
+              </div>
+            ) : null}
+
+            <EmptyDashboardState
+              title={emptyStateTitle}
+              description={emptyStateDescription}
+              selectedDevice={selectedDevice}
+            />
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const latestEntry = displayHistory[displayHistory.length - 1];
+  const previousEntry = displayHistory[Math.max(0, displayHistory.length - 2)] || latestEntry;
   const temperatureStatus = getStatusStyles(
     "temperature",
     latestEntry.temperature,
@@ -1438,9 +1644,9 @@ export const DashboardSection = () => {
   const uvStatus = getStatusStyles("uv", latestEntry.uvi);
   const soundStatus = getStatusStyles("sound", latestEntry.sound);
   const lightCorrelation = calculateCorrelation(rangeHistory, "lux", "uvi");
-  const dailyMaxTemperature = findDailyPeak(history, "temperature");
-  const dailyMaxUvi = findDailyPeak(history, "uvi");
-  const abnormalSoundEvents = history.filter((entry) => entry.sound >= 80);
+  const dailyMaxTemperature = findDailyPeak(displayHistory, "temperature");
+  const dailyMaxUvi = findDailyPeak(displayHistory, "uvi");
+  const abnormalSoundEvents = displayHistory.filter((entry) => entry.sound >= 80);
   const latestAbnormalSound =
     abnormalSoundEvents[abnormalSoundEvents.length - 1] || latestEntry;
   const soundBars = sampleHistory(cardHistory, 10).map((entry) => entry.sound);
@@ -1515,7 +1721,7 @@ export const DashboardSection = () => {
       accent: uvStatus.accent,
       status: uvStatus.label,
       note: uvStatus.note,
-      value: formatNumber(latestEntry.uvi, 1),
+      value: formatNumber(latestEntry.uvi, 2),
       unit: "UVI",
       delta: getTrend(cardHistory, "uvi", latestEntry.uvi),
       deltaMetric: "uvi",
@@ -1597,12 +1803,15 @@ export const DashboardSection = () => {
       pointBackgroundColor: dataset.color,
       pointBorderColor: isDarkMode ? "#08111f" : "#ffffff",
       pointBorderWidth: 2,
-      tension: 0.38,
+      tension: 0,
       yAxisID: dataset.yAxisID,
       metricKey: dataset.key,
       unit: dataset.unit,
     })),
   };
+
+  const primaryAxisBounds = getAxisBounds(chartHistory, tabDefinition.datasets, "y");
+  const secondaryAxisBounds = getAxisBounds(chartHistory, tabDefinition.datasets, "y1");
 
   const chartOptions = {
     responsive: true,
@@ -1665,12 +1874,14 @@ export const DashboardSection = () => {
       },
       y: {
         position: "left",
-        grace: "12%",
+        min: primaryAxisBounds.min,
+        max: primaryAxisBounds.max,
         grid: {
           color: isDarkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.18)",
         },
         ticks: {
           color: isDarkMode ? "#90a3bf" : "#526075",
+          callback: (value) => formatAxisTick(value),
           font: {
             family: "Space Grotesk, Segoe UI, sans-serif",
             size: 11,
@@ -1691,12 +1902,14 @@ export const DashboardSection = () => {
         ? {
             y1: {
               position: "right",
-              grace: "12%",
+              min: secondaryAxisBounds.min,
+              max: secondaryAxisBounds.max,
               grid: {
                 drawOnChartArea: false,
               },
               ticks: {
                 color: isDarkMode ? "#90a3bf" : "#526075",
+                callback: (value) => formatAxisTick(value),
                 font: {
                   family: "Space Grotesk, Segoe UI, sans-serif",
                   size: 11,
@@ -1964,14 +2177,10 @@ export const DashboardSection = () => {
         <div className="absolute bottom-16 left-1/3 h-72 w-72 rounded-full bg-emerald-400/8 blur-[150px] dark:bg-emerald-500/6" />
       </div>
 
-      <div className="container relative px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
-        <div className="p-3 sm:p-5 lg:p-8">
+      <div className="container relative px-3 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-6">
+        <div className="p-2 sm:p-4 lg:p-6">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-            <div className="max-w-3xl">
-              <h1 className="mt-2 max-w-2xl text-3xl font-semibold tracking-[-0.06em] text-foreground sm:mt-5 sm:text-4xl lg:text-5xl">
-                Hệ thống giám sát môi trường thời gian thực
-              </h1>
-            </div>
+            <DeviceHeader selectedDevice={selectedDevice} />
           </div>
 
           <div className="mt-6 grid gap-3 sm:mt-8 sm:gap-4 md:grid-cols-2 2xl:grid-cols-4">
@@ -2124,5 +2333,62 @@ export const DashboardSection = () => {
         </div>
       </div>
     </section>
+  );
+};
+
+const AirSensorDashboardPlaceholder = ({ selectedDevice }) => (
+  <section className="relative overflow-hidden">
+    <div className="pointer-events-none absolute inset-0 opacity-35">
+      <div className="absolute left-[10%] top-16 h-56 w-56 rounded-full bg-cyan-400/10 blur-[120px] dark:bg-cyan-500/8" />
+      <div className="absolute right-[6%] top-32 h-64 w-64 rounded-full bg-fuchsia-400/8 blur-[130px] dark:bg-fuchsia-500/8" />
+      <div className="absolute bottom-16 left-1/3 h-72 w-72 rounded-full bg-emerald-400/8 blur-[150px] dark:bg-emerald-500/6" />
+    </div>
+
+      <div className="container relative px-3 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-6">
+        <div className="p-2 sm:p-4 lg:p-6">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+          <DeviceHeader selectedDevice={selectedDevice} />
+        </div>
+
+        <div className="mt-6 lg:mt-8">
+          <div className="flex min-h-[420px] items-center justify-center px-6 text-center sm:px-8 lg:px-10">
+            <div className="max-w-lg">
+              <p className="text-xl font-semibold tracking-[-0.03em] text-foreground">
+                Màn hình cảm biến không khí sẽ làm riêng
+              </p>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                Thiết bị này đã được tách sang luồng giao diện khác. Hiện tại chỉ màn cảm biến môi trường đã hoàn thiện.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+export const DashboardSection = (props) => {
+  const deviceType = props.selectedDevice?.type?.trim().toLowerCase();
+  const deviceId = props.selectedDevice?.id?.trim();
+  const topic =
+    deviceType === "cảm biến môi trường"
+      ? `env_v2/${deviceId}/data`
+      : deviceType === "cảm biến không khí"
+        ? `dust_v2/${deviceId}/data`
+        : "";
+  const selectedDeviceSnapshot = useDeviceMqttData({
+    topic,
+    enabled: Boolean(deviceId),
+  });
+
+  if (deviceType === "cảm biến không khí") {
+    return <AirSensorDashboardPlaceholder selectedDevice={props.selectedDevice} />;
+  }
+
+  return (
+    <EnvironmentSensorDashboard
+      {...props}
+      selectedDeviceSnapshot={selectedDeviceSnapshot}
+    />
   );
 };

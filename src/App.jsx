@@ -1,9 +1,9 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Home } from "./pages/Home";
-import { LivePage } from "./pages/LivePage";
-import { ChartPage } from "./pages/ChartPage";
+// import { LivePage } from "./pages/LivePage";
+// import { ChartPage } from "./pages/ChartPage";
 import { LoginPage } from "./pages/LoginPage";
-import { HistoryPage } from "./pages/HistoryPage";
+import { HistoryPage } from "./pages/HistoryPageEnhanced";
 import { DashboardPage } from "./pages/DashboardPage";
 import { NotFound } from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -17,9 +17,9 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route index element={<Home />} />
-          <Route path="/live" element={<LivePage />} />
+          {/* <Route path="/live" element={<LivePage />} /> */}
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/chart" element={<ChartPage />} />
+          {/* <Route path="/chart" element={<ChartPage />} /> */}
           <Route path="/login" element={<LoginPage />} />
           <Route 
             path="/history" 

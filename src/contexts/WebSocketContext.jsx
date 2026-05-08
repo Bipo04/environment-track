@@ -9,18 +9,49 @@ const WS_CONFIG = {
   path: '/ws-live-data',
 };
 
+const EMPTY_SENSOR_DATA = {
+  temperature: 0,
+  humidity: 0,
+  lux: 0,
+  broadband: 0,
+  infrared: 0,
+  UVI: 0,
+  UVA: 0,
+  UVB: 0,
+  sound: 0,
+  timestamp: 'Waiting for connection...',
+  deviceId: '',
+};
+
+const extractDeviceId = (payload) =>
+  String(
+    payload?.deviceId ??
+      payload?.device_id ??
+      payload?.device ??
+      payload?.id ??
+      payload?.sensorId ??
+      payload?.sensor_id ??
+      payload?.deviceInfo?.id ??
+      ''
+  ).trim();
+
+const normalizeSensorData = (data) => ({
+  temperature: parseFloat(data?.temperature) || 0,
+  humidity: parseFloat(data?.humidity) || 0,
+  lux: parseInt(data?.lux, 10) || 0,
+  broadband: parseInt(data?.broadband, 10) || 0,
+  infrared: parseInt(data?.infrared, 10) || 0,
+  UVI: parseFloat(data?.UVI ?? data?.uvi) || 0,
+  UVA: parseFloat(data?.UVA ?? data?.uva) || 0,
+  UVB: parseFloat(data?.UVB ?? data?.uvb) || 0,
+  sound: parseFloat(data?.sound) || 0,
+  timestamp: data?.timestamp || new Date().toLocaleString(),
+  deviceId: extractDeviceId(data),
+});
+
 export const WebSocketProvider = ({ children }) => {
-  const [sensorData, setSensorData] = useState({
-    temperature: 0,
-    humidity: 0,
-    lux: 0,
-    broadband: 0,
-    infrared: 0,
-    UVI: 0,
-    UVA: 0,
-    UVB: 0,
-    timestamp: new Date().toLocaleString(),
-  });
+  const [sensorData, setSensorData] = useState(EMPTY_SENSOR_DATA);
+  const [sensorDataByDevice, setSensorDataByDevice] = useState({});
 
   const [socket, setSocket] = useState(null);
 
@@ -41,18 +72,17 @@ export const WebSocketProvider = ({ children }) => {
 
     newSocket.on('mqttData', (data) => {
       console.log('📡 Received sensor data:', data);
-      
-      setSensorData({
-        temperature: parseFloat(data.temperature) || 0,
-        humidity: parseFloat(data.humidity) || 0,
-        lux: parseInt(data.lux) || 0,
-        broadband: parseInt(data.broadband) || 0,
-        infrared: parseInt(data.infrared) || 0,
-        UVI: parseFloat(data.UVI) || 0,
-        UVA: parseFloat(data.UVA) || 0,
-        UVB: parseFloat(data.UVB) || 0,
-        timestamp: new Date().toLocaleString(),
-      });
+
+      const normalized = normalizeSensorData(data);
+
+      setSensorData(normalized);
+
+      if (normalized.deviceId) {
+        setSensorDataByDevice((previous) => ({
+          ...previous,
+          [normalized.deviceId]: normalized,
+        }));
+      }
     });
 
     newSocket.on('disconnect', (reason) => {
@@ -76,7 +106,7 @@ export const WebSocketProvider = ({ children }) => {
   }, []);
 
   return (
-    <WebSocketContext.Provider value={{ sensorData, socket }}>
+    <WebSocketContext.Provider value={{ sensorData, sensorDataByDevice, socket }}>
       {children}
     </WebSocketContext.Provider>
   );
@@ -88,4 +118,12 @@ export const useWebSocket = () => {
     throw new Error('useWebSocket must be used within WebSocketProvider');
   }
   return context.sensorData;
+};
+
+export const useWebSocketContext = () => {
+  const context = useContext(WebSocketContext);
+  if (!context) {
+    throw new Error('useWebSocketContext must be used within WebSocketProvider');
+  }
+  return context;
 };

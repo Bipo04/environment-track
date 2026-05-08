@@ -1,11 +1,59 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Navbar } from "../components/layout/Navbar";
 import { DashboardSection } from "@/components/sections/DashboardSection";
 import { DeviceSidebar } from "@/components/sections/dashboard/DeviceSidebar";
+import {
+  loadSelectedDeviceId,
+  loadStoredDevices,
+  saveSelectedDeviceId,
+  saveStoredDevices,
+} from "@/lib/deviceStorage";
 
 export const DashboardPage = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [devices, setDevices] = useState(loadStoredDevices);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(loadSelectedDeviceId);
+
+  useEffect(() => {
+    saveStoredDevices(devices);
+  }, [devices]);
+
+  useEffect(() => {
+    if (!devices.length) {
+      setSelectedDeviceId("");
+      saveSelectedDeviceId("");
+      return;
+    }
+
+    const selectedDeviceStillExists = devices.some((device) => device.id === selectedDeviceId);
+    if (!selectedDeviceStillExists) {
+      setSelectedDeviceId(devices[0].id);
+    }
+  }, [devices, selectedDeviceId]);
+
+  useEffect(() => {
+    saveSelectedDeviceId(selectedDeviceId);
+  }, [selectedDeviceId]);
+
+  const handleRegisterDevice = (device) => {
+    setDevices((previous) => [...previous, device]);
+    setSelectedDeviceId(device.id);
+  };
+
+  const handleUnregisterDevice = (deviceId) => {
+    setDevices((previous) => previous.filter((device) => device.id !== deviceId));
+  };
+
+  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) || null;
+
+  const sidebarProps = {
+    devices,
+    selectedDeviceId,
+    onSelectDevice: setSelectedDeviceId,
+    onRegisterDevice: handleRegisterDevice,
+    onUnregisterDevice: handleUnregisterDevice,
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
@@ -17,11 +65,14 @@ export const DashboardPage = () => {
         <div className="mx-auto w-full max-w-[1700px] rounded-lg border border-border/50 bg-card/80 shadow-2xl backdrop-blur-sm">
           <div className="flex min-h-[calc(100vh-7rem)] overflow-hidden rounded-lg">
             <aside className="hidden lg:block border-r border-border/50 bg-card/70">
-              <DeviceSidebar />
+              <DeviceSidebar {...sidebarProps} />
             </aside>
 
             <div className="min-w-0 flex-1">
-              <DashboardSection />
+              <DashboardSection
+                devices={devices}
+                selectedDevice={selectedDevice}
+              />
             </div>
           </div>
         </div>
@@ -55,7 +106,7 @@ export const DashboardPage = () => {
               <ChevronLeft className="h-4 w-4" />
             </button>
 
-            <DeviceSidebar className="h-full w-full" />
+            <DeviceSidebar className="h-full w-full" {...sidebarProps} />
           </div>
         </div>
       ) : null}
