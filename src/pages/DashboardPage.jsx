@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Navbar } from "../components/layout/Navbar";
 import { DashboardSection } from "@/components/sections/DashboardSection";
@@ -21,7 +21,9 @@ export const DashboardPage = () => {
 
   useEffect(() => {
     if (!devices.length) {
-      setSelectedDeviceId("");
+      if (selectedDeviceId) {
+        setSelectedDeviceId("");
+      }
       saveSelectedDeviceId("");
       return;
     }
@@ -45,15 +47,21 @@ export const DashboardPage = () => {
     setDevices((previous) => previous.filter((device) => device.id !== deviceId));
   };
 
-  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) || null;
+  const selectedDevice = useMemo(
+    () => devices.find((device) => device.id === selectedDeviceId) || null,
+    [devices, selectedDeviceId]
+  );
 
-  const sidebarProps = {
-    devices,
-    selectedDeviceId,
-    onSelectDevice: setSelectedDeviceId,
-    onRegisterDevice: handleRegisterDevice,
-    onUnregisterDevice: handleUnregisterDevice,
-  };
+  const sidebarProps = useMemo(
+    () => ({
+      devices,
+      selectedDeviceId,
+      onSelectDevice: setSelectedDeviceId,
+      onRegisterDevice: handleRegisterDevice,
+      onUnregisterDevice: handleUnregisterDevice,
+    }),
+    [devices, selectedDeviceId]
+  );
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">

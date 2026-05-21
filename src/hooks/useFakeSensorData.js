@@ -16,7 +16,7 @@ export const useFakeSensorData = () => {
     UVI: 6.5,
     UVA: 1.8,
     UVB: 0.12,
-    sound: 68,
+    sound: 800,
     timestamp: new Date().toLocaleString(),
   });
 
@@ -33,7 +33,7 @@ export const useFakeSensorData = () => {
         UVI:         walk(ref.current.UVI,         0, 11, 0.2),
         UVA:         walk(ref.current.UVA,         0, 5, 0.05),
         UVB:         walk(ref.current.UVB,         0, 1, 0.01),
-        sound:       walk(ref.current.sound,       40, 95, 3),
+        sound:       walk(ref.current.sound,       100, 3500, 100),
         timestamp:   new Date().toLocaleString(),
       };
       setData({ ...ref.current });

@@ -1,8 +1,27 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { historyService } from "@/services/historyService";
 import { useNavigate } from "react-router-dom";
+
+const METRICS = [
+  { key: "temperature", label: "Nhiệt độ", unit: "°C", decimals: 1 },
+  { key: "humidity", label: "Độ ẩm", unit: "%", decimals: 1 },
+  { key: "lux", label: "Lux", unit: "", decimals: 0 },
+  { key: "UVI", label: "UVI", unit: "", decimals: 2 },
+  { key: "UVA", label: "UVA", unit: "", decimals: 2 },
+  { key: "UVB", label: "UVB", unit: "", decimals: 2 },
+  { key: "broadband", label: "Broadband", unit: "", decimals: 0 },
+  { key: "infrared", label: "Infrared", unit: "", decimals: 0 },
+  { key: "sound", label: "Âm thanh", unit: "dB", decimals: 1 },
+];
+
+const formatMetric = (value, metricKey) => {
+  const metric = METRICS.find((item) => item.key === metricKey) || METRICS[0];
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  const numeric = Number(value);
+  return `${numeric.toFixed(metric.decimals)}${metric.unit ? ` ${metric.unit}` : ""}`;
+};
 
 export const HistoryPage = () => {
   const navigate = useNavigate();
@@ -13,6 +32,7 @@ export const HistoryPage = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [selectedMetricGroup, setSelectedMetricGroup] = useState("environment");
 
   useEffect(() => {
     fetchData(currentPage);
@@ -21,21 +41,27 @@ export const HistoryPage = () => {
   const fetchData = async (page) => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      const result = await historyService.getHistoryData(page, itemsPerPage);
-      setData(result.data);
-      setTotalPages(result.totalPages);
-      setTotal(result.total);
+      const result = await historyService.getHistoryData({ page, limit: itemsPerPage });
+      setData(result.data || []);
+      setTotalPages(result.totalPages || 1);
+      setTotal(result.total || 0);
     } catch (err) {
       setError(err.message);
-      if (err.message.includes('Unauthorized')) {
+      if (String(err.message).includes('Unauthorized')) {
         setTimeout(() => navigate('/login'), 2000);
       }
     } finally {
       setLoading(false);
     }
   };
+
+  const aggregateParams = useMemo(() => ({
+    page: 1,
+    limit: 100,
+    periodType: "day",
+  }), []);
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);

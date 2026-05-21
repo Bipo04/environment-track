@@ -1,11 +1,10 @@
 // Light Intensity Card (simplified spectrum)
 
 const getLuxLabel = (lux) => {
-  if (lux < 50) return { label: 'Tối', emoji: '🌑', color: '#6366f1' };
-  if (lux < 200) return { label: 'Ánh sáng yếu', emoji: '🌒', color: '#8b5cf6' };
-  if (lux < 1000) return { label: 'Bình thường', emoji: '🌤️', color: '#f59e0b' };
-  if (lux < 10000) return { label: 'Sáng', emoji: '☀️', color: '#f97316' };
-  return { label: 'Rất sáng', emoji: '🌟', color: '#ef4444' };
+  if (lux <= 50) return { label: 'Rất tối', emoji: '🌑', color: '#ef4444' };
+  if (lux <= 200) return { label: 'Thiếu sáng', emoji: '🌒', color: '#f97316' };
+  if (lux <= 1000) return { label: 'Đủ sáng', emoji: '🌤️', color: '#22c55e' };
+  return { label: 'Quá sáng', emoji: '☀️', color: '#eab308' };
 };
 
 // Simple horizontal bar spectrum

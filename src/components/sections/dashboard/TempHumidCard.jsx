@@ -2,17 +2,21 @@
 // No trend/variation chart – just big gauges + key stats
 
 const getHumidityLabel = (h) => {
-  if (h < 30) return { label: 'Khô', color: '#f97316', bg: 'from-orange-500/20 to-orange-600/5' };
-  if (h < 60) return { label: 'Bình thường', color: '#22c55e', bg: 'from-green-500/20 to-green-600/5' };
-  if (h < 80) return { label: 'Ẩm', color: '#3b82f6', bg: 'from-blue-500/20 to-blue-600/5' };
-  return { label: 'Rất ẩm', color: '#8b5cf6', bg: 'from-purple-500/20 to-purple-600/5' };
+  if (h <= 30) return { label: 'Khô', color: '#f97316', bg: 'from-orange-500/20 to-orange-600/5' };
+  if (h <= 60) return { label: 'Tốt', color: '#22c55e', bg: 'from-green-500/20 to-green-600/5' };
+  if (h <= 80) return { label: 'Ẩm', color: '#3b82f6', bg: 'from-blue-500/20 to-blue-600/5' };
+  return { label: 'Rất ẩm', color: '#ef4444', bg: 'from-red-500/20 to-red-600/5' };
 };
 
 const getTempLabel = (t) => {
-  if (t < 18) return { label: 'Lạnh', color: '#60a5fa' };
-  if (t < 26) return { label: 'Mát mẻ', color: '#34d399' };
-  if (t < 35) return { label: 'Ấm', color: '#fb923c' };
-  return { label: 'Nóng', color: '#ef4444' };
+  if (t <= 10) return { label: 'Rất lạnh', color: '#3b82f6' };
+  if (t <= 18) return { label: 'Lạnh', color: '#60a5fa' };
+  if (t <= 24) return { label: 'Mát mẻ', color: '#0d9488' };
+  if (t <= 27) return { label: 'Ổn định', color: '#22c55e' };
+  if (t <= 30) return { label: 'Hơi nóng', color: '#f5b84b' };
+  if (t <= 35) return { label: 'Nóng', color: '#f97316' };
+  if (t <= 40) return { label: 'Rất nóng', color: '#ef4444' };
+  return { label: 'Cực nóng', color: '#a855f7' };
 };
 
 // Semicircle gauge SVG

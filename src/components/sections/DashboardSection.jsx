@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   Activity,
   ArrowDownRight,
@@ -21,6 +21,7 @@ import {
   PointElement,
   Tooltip,
 } from "chart.js";
+import zoomPlugin from "chartjs-plugin-zoom";
 import { Line } from "react-chartjs-2";
 import { cn } from "@/lib/utils";
 import { useFakeSensorData } from "@/hooks/useFakeSensorData";
@@ -31,6 +32,7 @@ import { UVCard } from "./dashboard/UVCard";
 import { SoundCard } from "./dashboard/SoundCard";
 import { DeviceSidebar } from "./dashboard/DeviceSidebar";
 import TemperatureChart from "./TemperatureChart";
+import { AirSensorDashboard } from "./dashboard/AirSensorDashboard";
 
 ChartJS.register(
   CategoryScale,
@@ -39,7 +41,8 @@ ChartJS.register(
   LineElement,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  zoomPlugin
 );
 
 const HOUR = 60 * 60 * 1000;
@@ -47,12 +50,29 @@ const DAY = 24 * HOUR;
 const HISTORY_WINDOW = 7 * DAY;
 const SEED_STEP = 5 * 60 * 1000;
 
+const STANDARD_RANGES = {
+  tempHumidity: {
+    y: { min: 0, max: 50 },
+    y1: { min: 0, max: 100 },
+  },
+  light: {
+    y: { min: 0, max: 3000 },
+    y1: { min: 0, max: 1000 },
+  },
+  uv: {
+    y: { min: 0, max: 12 },
+    y1: { min: 0, max: 100 },
+  },
+  sound: {
+    y: { min: 0, max: 4095 },
+  },
+};
+
 const TAB_CONFIG = {
   tempHumidity: {
     label: "Nhiệt & Ẩm",
-    title: "Cân bằng nhiệt độ và độ ẩm",
-    subtitle:
-      "Theo dõi đồng thời nhiệt độ và độ ẩm để thấy rõ biến động môi trường.",
+    title: "Biểu đồ nhiệt độ và độ ẩm",
+    subtitle: "",
     datasets: [
       {
         key: "temperature",
@@ -74,8 +94,8 @@ const TAB_CONFIG = {
   },
   light: {
     label: "Ánh sáng",
-    title: "Phổ ánh sáng",
-    subtitle: "So sánh lux môi trường với biến động BB và FR.",
+    title: "Biểu đồ ánh sáng",
+    subtitle: "",
     datasets: [
       {
         key: "lux",
@@ -86,26 +106,26 @@ const TAB_CONFIG = {
       },
       {
         key: "bb",
-        label: "Ánh sáng xanh (BB)",
+        label: "Broadband",
         color: "#3fb0ff",
         unit: " bb",
         yAxisID: "y1",
       },
       {
         key: "fr",
-        label: "Hồng ngoại xa (FR)",
+        label: "IR",
         color: "#f5b84b",
         unit: " fr",
         yAxisID: "y1",
       },
     ],
     axisLabel: "Lux",
-    secondaryAxisLabel: "BB / FR",
+    secondaryAxisLabel: "Broadband / IR",
   },
   uv: {
     label: "UV",
-    title: "Diễn biến phơi nhiễm UV",
-    subtitle: "Theo dõi đỉnh UVA, UVB và UV Index trước khi vượt ngưỡng rủi ro.",
+    title: "Biểu đồ UV",
+    subtitle: "",
     datasets: [
       {
         key: "uvi",
@@ -134,18 +154,18 @@ const TAB_CONFIG = {
   },
   sound: {
     label: "Âm thanh",
-    title: "Hoạt động âm thanh",
-    subtitle: "Phát hiện các đợt tăng âm bất thường trước khi kéo dài.",
+    title: "Biểu đồ âm thanh",
+    subtitle: "",
     datasets: [
       {
         key: "sound",
         label: "Mức âm thanh",
         color: "#26c6da",
-        unit: " dBA",
+        unit: " dB",
         yAxisID: "y",
       },
     ],
-    axisLabel: "dBA",
+    axisLabel: "dB",
   },
 };
 
@@ -258,13 +278,13 @@ const buildSeedHistory = (baseSnapshot) => {
     const uva = clamp(0.25 + uvi * 0.28 + wave(index, 0.21, 1.4) * 0.08, 0, 5);
     const uvb = clamp(0.01 + uvi * 0.03 + wave(index, 0.26, 2.8) * 0.008, 0, 1);
     const sound = clamp(
-      base.sound * 0.72 +
-        40 +
-        solarWave * 8 +
-        rushHour * 15 +
-        wave(index, 0.29, 0.7) * 4,
-      35,
-      96
+      base.sound * 0.6 +
+        300 +
+        solarWave * 300 +
+        rushHour * 1000 +
+        wave(index, 0.29, 0.7) * 400,
+      100,
+      3500
     );
 
     points.push({
@@ -497,7 +517,7 @@ const MIN_CHART_SPAN = {
   uvi: 1.5,
   uva: 1,
   uvb: 0.3,
-  sound: 8,
+  sound: 500,
 };
 
 const getAxisBounds = (entries, datasets, axisId) => {
@@ -540,92 +560,143 @@ const getTrend = (entries, key, fallbackValue = 0) => {
 
 const getStatusStyles = (type, value, humidity = 0) => {
   if (type === "temperature") {
-    if (value >= 33 || humidity >= 78) {
-      return { label: "Nóng", note: "Nhiệt tích tụ đang tăng nhanh.", accent: "#ff6b63" };
+    if (value <= 10) {
+      return { label: "Rất lạnh", note: "Trời rét buốt. Chú ý giữ ấm cơ thể.", accent: "#3b82f6" };
     }
-    if (value <= 21) {
-      return { label: "Mát", note: "Nhiệt độ đang ở vùng thấp.", accent: "#4f8cff" };
+    if (value <= 18) {
+      return { label: "Lạnh", note: "Nhiệt độ xuống thấp, không khí lạnh rõ.", accent: "#60a5fa" };
+    }
+    if (value <= 24) {
+      return { label: "Mát mẻ", note: "Mát mẻ dễ chịu. Thời tiết lý tưởng.", accent: "#0d9488" };
+    }
+    if (value <= 27) {
+      return {
+        label: "Ổn định",
+        note: "Thời tiết dễ chịu, không khí thoáng mát.",
+        accent: "#22c55e",
+      };
+    }
+    if (value <= 30) {
+      return {
+        label: "Hơi nóng",
+        note: "Không khí hơi ngột ngạt, bắt đầu oi bức.",
+        accent: "#f5b84b",
+      };
+    }
+    if (value <= 35) {
+      return {
+        label: "Nóng",
+        note: "Trời oi nóng. Chú ý uống đủ nước.",
+        accent: "#f97316",
+      };
+    }
+    if (value <= 40) {
+      return {
+        label: "Rất nóng",
+        note: "Nắng nóng gay gắt. Hạn chế ra ngoài.",
+        accent: "#ef4444",
+      };
     }
     return {
-      label: "Ấm",
-      note: "Nhiệt độ đang ở vùng dễ chịu.",
-      accent: "#39d98a",
+      label: "Cực nóng",
+      note: "Nhiệt độ quá tải! Kiểm tra thiết bị ngay.",
+      accent: "#a855f7",
     };
   }
 
   if (type === "light") {
-    if (value < 150) {
+    if (value <= 50) {
       return {
-        label: "Thiếu sáng",
-        note: "Cường độ ánh sáng đang thấp.",
-        accent: "#4f8cff",
+        label: "Rất tối",
+        note: "Ánh sáng rất thấp.",
+        accent: "#ef4444",
       };
     }
-    if (value < 1500) {
+    if (value <= 200) {
       return {
-        label: "Ổn định",
-        note: "Ánh sáng đang ở mức cân bằng.",
-        accent: "#73d37f",
+        label: "Thiếu sáng",
+        note: "Cường độ ánh sáng thấp.",
+        accent: "#f97316",
+      };
+    }
+    if (value <= 1000) {
+      return {
+        label: "Đủ sáng",
+        note: "Ánh sáng phù hợp.",
+        accent: "#22c55e",
       };
     }
     return {
-      label: "Sáng mạnh",
-      note: "Cường độ ánh sáng đang cao.",
-      accent: "#f5b84b",
+      label: "Quá sáng",
+      note: "Ánh sáng quá mạnh.",
+      accent: "#eab308",
     };
   }
 
   if (type === "uv") {
-    if (value < 3) {
+    if (value <= 2) {
       return {
         label: "UV thấp",
-        note: "Mức phơi nhiễm vẫn an toàn.",
-        accent: "#c084fc",
+        note: "Mức UV an toàn.",
+        accent: "#22c55e",
       };
     }
-    if (value < 6) {
+    if (value <= 5) {
       return {
         label: "UV trung bình",
-        note: "Nên theo dõi nếu tiếp xúc kéo dài.",
-        accent: "#a855f7",
+        note: "Mức UV trung bình.",
+        accent: "#eab308",
       };
     }
-    if (value < 8) {
+    if (value <= 7) {
       return {
         label: "UV cao",
-        note: "Nên có biện pháp bảo vệ bổ sung.",
-        accent: "#9333ea",
+        note: "Mức UV cao.",
+        accent: "#f97316",
+      };
+    }
+    if (value <= 10) {
+      return {
+        label: "UV rất cao",
+        note: "Mức UV rất cao.",
+        accent: "#ef4444",
       };
     }
     return {
-      label: "UV rất cao",
-      note: "Mức phơi nhiễm đang sát ngưỡng rủi ro.",
-      accent: "#7c3aed",
+      label: "UV cực đoan",
+      note: "Mức UV nguy hiểm.",
+      accent: "#a855f7",
     };
   }
 
-  if (value < 50) {
-    return { label: "Yên tĩnh", note: "Mức âm thanh đang thấp.", accent: "#4f8cff" };
+  if (value <= 300) {
+    return { label: "Yên tĩnh", note: "Âm thanh ở mức thấp.", accent: "#22c55e" };
   }
-  if (value < 70) {
+  if (value <= 700) {
     return {
-      label: "An toàn",
-      note: "Trong giới hạn an toàn.",
-      accent: "#39d98a",
+      label: "Bình thường",
+      note: "Âm thanh ở mức bình thường.",
+      accent: "#22c55e",
     };
   }
-  if (value < 85) {
+  if (value <= 1200) {
     return {
-      label: "Tăng nhẹ",
-      note: "Âm thanh đang tăng nhưng chưa bất thường.",
-      accent: "#f5b84b",
+      label: "Ồn",
+      note: "Mức âm thanh khá cao.",
+      accent: "#f97316",
     };
   }
-
+  if (value <= 2000) {
+    return {
+      label: "Cảnh báo",
+      note: "Âm thanh lớn.",
+      accent: "#ef4444",
+    };
+  }
   return {
-    label: "Cảnh báo",
-    note: "Âm thanh đã vượt ngưỡng bất thường.",
-    accent: "#ff6b63",
+    label: "Rất ồn",
+    note: "Âm thanh ở mức rất cao.",
+    accent: "#a855f7",
   };
 };
 
@@ -694,31 +765,78 @@ const calculateCorrelation = (entries, keyA, keyB) => {
 };
 
 const getHumidityStatus = (value) => {
-  if (value < 35) {
+  if (value <= 30) {
     return {
       label: "Khô",
-      note: "Độ ẩm thấp hơn mức dễ chịu.",
-      accent: "#f59e0b",
+      note: "Không khí khô.",
+      accent: "#f97316",
     };
   }
-  if (value < 65) {
+  if (value <= 60) {
     return {
-      label: "Bình thường",
-      note: "Độ ẩm nằm trong vùng ổn định.",
+      label: "Tốt",
+      note: "Độ ẩm phù hợp.",
       accent: "#22c55e",
     };
   }
-  if (value < 80) {
+  if (value <= 80) {
     return {
       label: "Ẩm",
-      note: "Không khí đang ẩm hơn bình thường.",
-      accent: "#4f8cff",
+      note: "Không khí có độ ẩm cao.",
+      accent: "#3b82f6",
     };
   }
   return {
     label: "Rất ẩm",
-    note: "Độ ẩm cao, cần theo dõi nấm mốc.",
-    accent: "#a855f7",
+    note: "Độ ẩm quá cao.",
+    accent: "#ef4444",
+  };
+};
+
+const calculateDewPoint = (temperature, humidity) => {
+  if (!Number.isFinite(temperature) || !Number.isFinite(humidity) || humidity <= 0) {
+    return null;
+  }
+
+  const a = 17.27;
+  const b = 237.7;
+  const gamma = (a * temperature) / (b + temperature) + Math.log(humidity / 100);
+  return (b * gamma) / (a - gamma);
+};
+
+const getDewPointStatus = (dewPoint) => {
+  if (dewPoint === null || !Number.isFinite(dewPoint)) {
+    return { label: "-", note: "Chưa đủ dữ liệu.", accent: "#64748b" };
+  }
+
+  if (dewPoint >= 24) {
+    return {
+      label: "Ẩm rít, oi bức",
+      note: "Nguy cơ ngưng tụ cao khi bề mặt lạnh hơn điểm sương.",
+      accent: "#ef4444",
+    };
+  }
+
+  if (dewPoint >= 20) {
+    return {
+      label: "Ẩm, dễ khó chịu",
+      note: "Theo dõi các khung giờ đêm và sáng sớm.",
+      accent: "#f97316",
+    };
+  }
+
+  if (dewPoint >= 16) {
+    return {
+      label: "Dễ chịu",
+      note: "Độ ẩm cảm nhận đang ở vùng ổn định.",
+      accent: "#22c55e",
+    };
+  }
+
+  return {
+    label: "Khô thoáng",
+    note: "Nguy cơ ngưng tụ thấp.",
+    accent: "#3b82f6",
   };
 };
 
@@ -741,7 +859,7 @@ const getProgressRatio = (key, value) => {
     case "uvi":
       return clamp(value / 11, 0, 1);
     case "sound":
-      return clamp(value / 100, 0, 1);
+      return clamp(value / 4095, 0, 1);
     default:
       return clamp(value, 0, 1);
   }
@@ -768,12 +886,10 @@ const OverviewSurface = ({
     >
       {isPanel ? (
         <div className="relative flex items-center gap-2.5 text-[11px] uppercase tracking-[0.22em] text-muted-foreground dark:text-slate-400">
-            <Icon className="h-4 w-4 text-muted-foreground dark:text-slate-400" />
             <span>{title}</span>
           </div>
       ) : (
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Icon className="h-4 w-4 text-muted-foreground dark:text-slate-400" />
           <span>{title}</span>
         </div>
       )}
@@ -903,7 +1019,7 @@ const MetricBarRow = ({
 
 const SoundBars = ({ value, accent, isDarkMode, count = 10 }) => {
   const totalBars = Math.max(8, Math.min(12, count));
-  const level = clamp(value / 100, 0, 1);
+  const level = clamp(value / 4095, 0, 1);
   const activeBars = Math.max(2, Math.round(level * totalBars));
 
   return (
@@ -950,7 +1066,6 @@ const StatusBanner = ({
     )}
   >
     <div className="flex items-start gap-2.5">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: accent }} />
       <div className="min-h-0 flex-1">
         <p className="text-sm font-semibold" style={{ color: accent }}>
           {label}
@@ -964,22 +1079,22 @@ const StatusBanner = ({
 );
 
 const MetricSummaryCard = ({ title, datasets, latestEntry, chartHistory, mode = "current" }) => (
-  <div className="rounded-lg border border-border/60 bg-card/90 px-4 py-4 dark:bg-slate-900/80">
-    <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
-    <div className="mt-3 space-y-3">
+  <div className="min-w-[225px] rounded-lg border border-border/50 bg-card/40 px-3 py-[11px] dark:bg-slate-900/40 sm:min-w-[250px]">
+    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+    <div className="mt-1.5 space-y-1.5">
       {datasets.map((dataset) => (
         <div
           key={`${mode}-${dataset.key}`}
-          className="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-background/70 px-3 py-2 dark:bg-slate-950/35"
+          className="flex items-center justify-between gap-3 rounded border border-border/30 bg-background/25 px-2 py-1 dark:bg-slate-950/15"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span
-              className="h-2.5 w-2.5 rounded-full"
+              className="h-2 w-2 shrink-0 rounded-full"
               style={{ backgroundColor: dataset.color }}
             />
-            <span className="text-sm font-medium text-foreground">{dataset.label}</span>
+            <span className="whitespace-nowrap text-[13px] font-medium text-foreground/80">{dataset.label}</span>
           </div>
-          <span className="text-lg font-semibold tracking-[-0.03em] text-foreground">
+          <span className="shrink-0 whitespace-nowrap pl-1 text-sm font-bold tracking-tight text-foreground">
             {mode === "current"
               ? formatMetricValue(dataset.key, latestEntry[dataset.key], dataset.key === "bb" || dataset.key === "fr")
               : formatDelta(dataset.key, getTrend(chartHistory, dataset.key))}
@@ -996,52 +1111,79 @@ const TemperatureHumidityOverviewCard = ({
   temperatureStatus,
   humidityStatus,
   isDarkMode,
-}) => (
-  <OverviewSurface icon={Thermometer} title="Nhiệt độ & Độ ẩm" accent="#ff9b43">
-    <div className="grid grid-cols-2 gap-4 sm:gap-6">
-      <RingGauge
-        valueText={`${formatNumber(temperature, 1)}°C`}
-        label="Nhiệt độ"
-        status={temperatureStatus.label}
-        accent={temperatureStatus.accent}
-        percent={getProgressRatio("temperature", temperature)}
-        minLabel="0"
-        maxLabel="50"
-        showStatus={false}
-        isDarkMode={isDarkMode}
-      />
-      <RingGauge
-        valueText={`${formatNumber(humidity, 0)}%`}
-        label="Độ ẩm"
-        status={humidityStatus.label}
-        accent={humidityStatus.accent}
-        percent={getProgressRatio("humidity", humidity)}
-        minLabel="0"
-        maxLabel="100"
-        showStatus={false}
-        isDarkMode={isDarkMode}
-      />
-    </div>
-    <div className="mt-auto border-t border-border/60 pt-4">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4">
-        <StatusBanner
+}) => {
+  const dewPoint = calculateDewPoint(temperature, humidity);
+  const dewPointStatus = getDewPointStatus(dewPoint);
+
+  return (
+    <OverviewSurface
+      icon={Thermometer}
+      title="Nhiệt độ & Độ ẩm"
+      accent="#ff9b43"
+      variant="panel"
+      bodyClassName="flex flex-1 flex-col"
+    >
+      <div className="grid grid-cols-2 gap-4 sm:gap-6">
+        <RingGauge
+          valueText={`${formatNumber(temperature, 1)}°C`}
+          label="Nhiệt độ"
+          status={temperatureStatus.label}
           accent={temperatureStatus.accent}
-          label={temperatureStatus.label}
-          note={temperatureStatus.note}
-          icon={Thermometer}
-          className="pt-0"
+          percent={getProgressRatio("temperature", temperature)}
+          minLabel="0"
+          maxLabel="50"
+          showStatus={false}
+          isDarkMode={isDarkMode}
         />
-        <StatusBanner
+        <RingGauge
+          valueText={`${formatNumber(humidity, 0)}%`}
+          label="Độ ẩm"
+          status={humidityStatus.label}
           accent={humidityStatus.accent}
-          label={humidityStatus.label}
-          note={humidityStatus.note}
-          icon={Droplets}
-          className="pt-0"
+          percent={getProgressRatio("humidity", humidity)}
+          minLabel="0"
+          maxLabel="100"
+          showStatus={false}
+          isDarkMode={isDarkMode}
         />
       </div>
-    </div>
-  </OverviewSurface>
-);
+
+      <div className="flex flex-col items-center py-4 text-center">
+        <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground dark:text-slate-400">
+          Điểm sương
+        </p>
+        <p
+          className="mt-1.5 text-[1.2rem] font-semibold leading-none tracking-[-0.03em]"
+          style={{ color: dewPointStatus.accent }}
+        >
+          {dewPoint !== null ? `${formatNumber(dewPoint, 1)}°C` : "—"}
+        </p>
+        <p className="mt-1 text-xs font-medium" style={{ color: dewPointStatus.accent }}>
+          {dewPointStatus.label}
+        </p>
+      </div>
+
+      <div className="mt-auto h-[118px] border-t border-border/60 dark:border-slate-800/90">
+        <div className="grid h-full grid-cols-2 gap-3 sm:gap-4">
+          <StatusBanner
+            accent={temperatureStatus.accent}
+            label={temperatureStatus.label}
+            note={temperatureStatus.note}
+            icon={Thermometer}
+            className="h-full pt-4"
+          />
+          <StatusBanner
+            accent={humidityStatus.accent}
+            label={humidityStatus.label}
+            note={humidityStatus.note}
+            icon={Droplets}
+            className="h-full pt-4"
+          />
+        </div>
+      </div>
+    </OverviewSurface>
+  );
+};
 
 const LightOverviewCard = ({ lux, bb, fr, status }) => (
   <OverviewSurface
@@ -1049,7 +1191,7 @@ const LightOverviewCard = ({ lux, bb, fr, status }) => (
     title="Cường độ ánh sáng"
     accent="#facc15"
     variant="panel"
-    bodyClassName="flex flex-1 flex-col gap-6"
+    bodyClassName="flex flex-1 flex-col"
   >
     <div className="space-y-5">
       <MetricBarRow
@@ -1061,7 +1203,7 @@ const LightOverviewCard = ({ lux, bb, fr, status }) => (
         variant="panel"
       />
       <MetricBarRow
-        label="BB"
+        label="Broadband"
         value={formatNumber(bb, 0)}
         suffix=""
         accent="#ff9b43"
@@ -1069,7 +1211,7 @@ const LightOverviewCard = ({ lux, bb, fr, status }) => (
         variant="panel"
       />
       <MetricBarRow
-        label="FR"
+        label="IR"
         value={formatNumber(fr, 0)}
         suffix=""
         accent="#ff6b35"
@@ -1082,7 +1224,7 @@ const LightOverviewCard = ({ lux, bb, fr, status }) => (
       label={status.label}
       note={status.note}
       withDivider
-      className="mt-auto"
+      className="mt-auto w-full"
     />
   </OverviewSurface>
 );
@@ -1093,7 +1235,7 @@ const UvOverviewCard = ({ uva, uvb, uvi, status }) => (
     title="Cảm biến UV"
     accent="#a855f7"
     variant="panel"
-    bodyClassName="flex flex-1 flex-col gap-6"
+    bodyClassName="flex flex-1 flex-col"
   >
     <div className="space-y-5">
       <MetricBarRow
@@ -1126,7 +1268,7 @@ const UvOverviewCard = ({ uva, uvb, uvi, status }) => (
       label={status.label}
       note={status.note}
       withDivider
-      className="mt-auto"
+      className="mt-auto w-full"
     />
   </OverviewSurface>
 );
@@ -1152,16 +1294,15 @@ const SoundOverviewCard = ({ sound, status, values, isDarkMode }) => (
           count={values.length}
         />
       </div>
-      <div className="mt-auto w-full pt-6">
-        <StatusBanner
-          accent={status.accent}
-          label={status.label}
-          note={status.note}
-          icon={Activity}
-          withDivider
-        />
-      </div>
     </div>
+    <StatusBanner
+      accent={status.accent}
+      label={status.label}
+      note={status.note}
+      icon={Activity}
+      withDivider
+      className="mt-auto w-full text-left"
+    />
   </OverviewSurface>
 );
 
@@ -1490,6 +1631,9 @@ const EnvironmentSensorDashboard = ({
   const [selectedTab, setSelectedTab] = useState("tempHumidity");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const lastSampleKey = useRef("");
+  const chartRef = useRef(null);
+  const lastRecordedTime = useRef(0);
+  const lastDeviceId = useRef("");
 
   useEffect(() => {
     const updateTheme = () => {
@@ -1508,9 +1652,20 @@ const EnvironmentSensorDashboard = ({
   }, []);
 
   useEffect(() => {
+    if (chartRef.current && chartRef.current.resetZoom) {
+      chartRef.current.resetZoom();
+    }
+  }, [selectedTab, selectedDevice]);
+
+  useEffect(() => {
     if (!selectedDevice) {
       lastSampleKey.current = "";
       return;
+    }
+
+    if (selectedDevice.id !== lastDeviceId.current) {
+      lastDeviceId.current = selectedDevice.id;
+      lastRecordedTime.current = 0;
     }
 
     const sampleKey = [
@@ -1531,7 +1686,13 @@ const EnvironmentSensorDashboard = ({
       return;
     }
 
+     const now = Date.now();
+     if (lastRecordedTime.current !== 0 && now - lastRecordedTime.current < 1000) {
+       return;
+     }
+
     lastSampleKey.current = sampleKey;
+    lastRecordedTime.current = now;
 
     setHistoryByDevice((previous) => {
       const previousHistory = previous[selectedDevice.id] || [];
@@ -1646,7 +1807,7 @@ const EnvironmentSensorDashboard = ({
   const lightCorrelation = calculateCorrelation(rangeHistory, "lux", "uvi");
   const dailyMaxTemperature = findDailyPeak(displayHistory, "temperature");
   const dailyMaxUvi = findDailyPeak(displayHistory, "uvi");
-  const abnormalSoundEvents = displayHistory.filter((entry) => entry.sound >= 80);
+  const abnormalSoundEvents = displayHistory.filter((entry) => entry.sound >= 2000);
   const latestAbnormalSound =
     abnormalSoundEvents[abnormalSoundEvents.length - 1] || latestEntry;
   const soundBars = sampleHistory(cardHistory, 10).map((entry) => entry.sound);
@@ -1796,7 +1957,7 @@ const EnvironmentSensorDashboard = ({
         gradient.addColorStop(1, withAlpha(dataset.color, 0));
         return gradient;
       },
-      fill: index === 0,
+      fill: false,
       borderWidth: 2.8,
       pointRadius: 0,
       pointHoverRadius: 5,
@@ -1810,126 +1971,147 @@ const EnvironmentSensorDashboard = ({
     })),
   };
 
-  const primaryAxisBounds = getAxisBounds(chartHistory, tabDefinition.datasets, "y");
-  const secondaryAxisBounds = getAxisBounds(chartHistory, tabDefinition.datasets, "y1");
+  const chartHistoryRef = useRef(chartHistory);
+  useEffect(() => {
+    chartHistoryRef.current = chartHistory;
+  }, [chartHistory]);
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: "index",
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        display: true,
-        position: "bottom",
-        labels: {
-          usePointStyle: true,
-          boxWidth: 10,
-          boxHeight: 10,
-          padding: 18,
-          color: isDarkMode ? "#dbe8ff" : "#1f2937",
-          font: {
-            family: "Space Grotesk, Segoe UI, sans-serif",
-            size: 12,
-            weight: 600,
-          },
-        },
+  const chartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: "index",
+        intersect: false,
       },
-      tooltip: {
-        backgroundColor: isDarkMode ? "rgba(8, 17, 31, 0.92)" : "rgba(255, 255, 255, 0.96)",
-        titleColor: isDarkMode ? "#f8fafc" : "#0f172a",
-        bodyColor: isDarkMode ? "#dbe8ff" : "#0f172a",
-        borderColor: isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.08)",
-        borderWidth: 1,
-        padding: 14,
-        displayColors: true,
-        callbacks: {
-          title: (items) =>
-            items[0] ? formatTooltipTimestamp(chartHistory[items[0].dataIndex].time) : "",
-          label: (context) =>
-            `${context.dataset.label}: ${formatMetricValue(
-              context.dataset.metricKey,
-              context.parsed.y,
-              context.dataset.metricKey === "bb" || context.dataset.metricKey === "fr"
-            )}`,
-        },
-      },
-    },
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-        ticks: {
-          color: isDarkMode ? "#90a3bf" : "#526075",
-          maxRotation: 0,
-          autoSkipPadding: 18,
-          font: {
-            family: "Space Grotesk, Segoe UI, sans-serif",
-            size: 11,
-          },
-        },
-      },
-      y: {
-        position: "left",
-        min: primaryAxisBounds.min,
-        max: primaryAxisBounds.max,
-        grid: {
-          color: isDarkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.18)",
-        },
-        ticks: {
-          color: isDarkMode ? "#90a3bf" : "#526075",
-          callback: (value) => formatAxisTick(value),
-          font: {
-            family: "Space Grotesk, Segoe UI, sans-serif",
-            size: 11,
-          },
-        },
-        title: {
+      plugins: {
+        legend: {
           display: true,
-          text: tabDefinition.axisLabel,
-          color: isDarkMode ? "#dbe8ff" : "#0f172a",
-          font: {
-            family: "Plus Jakarta Sans, Space Grotesk, sans-serif",
-            size: 12,
-            weight: 700,
+          position: "bottom",
+          labels: {
+            usePointStyle: true,
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 18,
+            color: isDarkMode ? "#dbe8ff" : "#1f2937",
+            font: {
+              family: "Space Grotesk, Segoe UI, sans-serif",
+              size: 12,
+              weight: 600,
+            },
+          },
+        },
+        tooltip: {
+          backgroundColor: isDarkMode ? "rgba(8, 17, 31, 0.92)" : "rgba(255, 255, 255, 0.96)",
+          titleColor: isDarkMode ? "#f8fafc" : "#0f172a",
+          bodyColor: isDarkMode ? "#dbe8ff" : "#0f172a",
+          borderColor: isDarkMode ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.08)",
+          borderWidth: 1,
+          padding: 14,
+          displayColors: true,
+          callbacks: {
+            title: (items) => {
+              if (items[0] && chartHistoryRef.current[items[0].dataIndex]) {
+                return formatTooltipTimestamp(chartHistoryRef.current[items[0].dataIndex].time);
+              }
+              return "";
+            },
+            label: (context) =>
+              `${context.dataset.label}: ${formatMetricValue(
+                context.dataset.metricKey,
+                context.parsed.y,
+                context.dataset.metricKey === "bb" || context.dataset.metricKey === "fr"
+              )}`,
+          },
+        },
+        zoom: {
+          zoom: {
+            wheel: {
+              enabled: true,
+            },
+            pinch: {
+              enabled: true,
+            },
+            mode: "y",
+            scaleMode: "y",
+          },
+          pan: {
+            enabled: true,
+            mode: "y",
+            scaleMode: "y",
           },
         },
       },
-      ...(tabDefinition.datasets.some((dataset) => dataset.yAxisID === "y1")
-        ? {
-            y1: {
-              position: "right",
-              min: secondaryAxisBounds.min,
-              max: secondaryAxisBounds.max,
-              grid: {
-                drawOnChartArea: false,
-              },
-              ticks: {
-                color: isDarkMode ? "#90a3bf" : "#526075",
-                callback: (value) => formatAxisTick(value),
-                font: {
-                  family: "Space Grotesk, Segoe UI, sans-serif",
-                  size: 11,
-                },
-              },
-              title: {
-                display: true,
-                text: tabDefinition.secondaryAxisLabel,
-                color: isDarkMode ? "#dbe8ff" : "#0f172a",
-                font: {
-                  family: "Plus Jakarta Sans, Space Grotesk, sans-serif",
-                  size: 12,
-                  weight: 700,
-                },
-              },
+      scales: {
+        x: {
+          grid: {
+            display: false,
+          },
+          ticks: {
+            color: isDarkMode ? "#90a3bf" : "#526075",
+            maxRotation: 0,
+            autoSkipPadding: 18,
+            font: {
+              family: "Space Grotesk, Segoe UI, sans-serif",
+              size: 11,
             },
-          }
-        : {}),
-    },
-  };
+          },
+        },
+        y: {
+          position: "left",
+          grid: {
+            color: isDarkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.18)",
+          },
+          ticks: {
+            color: isDarkMode ? "#90a3bf" : "#526075",
+            callback: (value) => formatAxisTick(value),
+            font: {
+              family: "Space Grotesk, Segoe UI, sans-serif",
+              size: 11,
+            },
+          },
+          title: {
+            display: true,
+            text: tabDefinition.axisLabel,
+            color: isDarkMode ? "#dbe8ff" : "#0f172a",
+            font: {
+              family: "Plus Jakarta Sans, Space Grotesk, sans-serif",
+              size: 12,
+              weight: 700,
+            },
+          },
+        },
+        ...(tabDefinition.datasets.some((dataset) => dataset.yAxisID === "y1")
+          ? {
+              y1: {
+                position: "right",
+                grid: {
+                  drawOnChartArea: false,
+                },
+                ticks: {
+                  color: isDarkMode ? "#90a3bf" : "#526075",
+                  callback: (value) => formatAxisTick(value),
+                  font: {
+                    family: "Space Grotesk, Segoe UI, sans-serif",
+                    size: 11,
+                  },
+                },
+                title: {
+                  display: true,
+                  text: tabDefinition.secondaryAxisLabel,
+                  color: isDarkMode ? "#dbe8ff" : "#0f172a",
+                  font: {
+                    family: "Plus Jakarta Sans, Space Grotesk, sans-serif",
+                    size: 12,
+                    weight: 700,
+                  },
+                },
+              },
+            }
+          : {}),
+      },
+    };
+  }, [isDarkMode, tabDefinition]);
 
   const detailWindow = sampleHistory(rangeHistory, 30);
   const temperatureStats = getStatWindow(detailWindow, "temperature");
@@ -2052,119 +2234,113 @@ const EnvironmentSensorDashboard = ({
       const humidityStats = getStatWindow(chartHistory, "humidity");
       const tempTrend = getTrend(chartHistory, "temperature", latestEntry.temperature);
       const humidityTrend = getTrend(chartHistory, "humidity", latestEntry.humidity);
-      const comfortSwing =
-        (tempStats.max - tempStats.min) + (humidityStats.max - humidityStats.min) / 10;
 
       return [
         {
-          metric: "Độ ổn định",
-          value: describeVolatility(comfortSwing, 2.4, 4.8),
-          note: "Tổng hợp từ biên độ nhiệt độ và độ ẩm trong 20 mẫu gần nhất.",
-        },
-        {
-          metric: "Biên độ nhiệt",
+          metric: "Biến động nhiệt độ",
           value: `${formatNumber(tempStats.max - tempStats.min, 1)}°C`,
-          note: `Dao động từ ${formatMetricValue("temperature", tempStats.min)} đến ${formatMetricValue("temperature", tempStats.max)}.`,
+          note: `Nhiệt độ dao động từ ${tempStats.min.toFixed(1)}°C đến ${tempStats.max.toFixed(1)}°C.`,
         },
         {
-          metric: "Biên độ ẩm",
+          metric: "Biến động độ ẩm",
           value: `${formatNumber(humidityStats.max - humidityStats.min, 0)}%`,
-          note: `Độ ẩm ${humidityTrend >= 0 ? "tăng" : "giảm"} ${formatNumber(Math.abs(humidityTrend), 0)}% so với đầu chuỗi.`,
+          note: `Độ ẩm dao động từ ${humidityStats.min.toFixed(0)}% đến ${humidityStats.max.toFixed(0)}%.`,
         },
         {
-          metric: "Xu hướng chung",
-          value: tempTrend >= 0 ? "Ấm dần" : "Mát dần",
-          note: `Nhiệt độ ${tempTrend >= 0 ? "tăng" : "giảm"} ${formatNumber(Math.abs(tempTrend), 1)}°C trong cửa sổ hiện tại.`,
+          metric: "Xu hướng nhiệt",
+          value: tempTrend === 0 ? "Ổn định" : tempTrend > 0 ? "Tăng dần" : "Giảm dần",
+          note: `Nhiệt độ thay đổi ${tempTrend === 0 ? "ổn định" : `${tempTrend > 0 ? "tăng" : "giảm"} ${Math.abs(tempTrend).toFixed(1)}°C`} trong 20 mẫu qua.`,
+        },
+        {
+          metric: "Xu hướng độ ẩm",
+          value: humidityTrend === 0 ? "Ổn định" : humidityTrend > 0 ? "Tăng dần" : "Giảm dần",
+          note: `Độ ẩm thay đổi ${humidityTrend === 0 ? "ổn định" : `${humidityTrend > 0 ? "tăng" : "giảm"} ${Math.abs(humidityTrend).toFixed(0)}%`} trong 20 mẫu qua.`,
         },
       ];
     }
 
     if (selectedTab === "light") {
       const luxStats = getStatWindow(chartHistory, "lux");
-      const bbStats = getStatWindow(chartHistory, "bb");
-      const frStats = getStatWindow(chartHistory, "fr");
       const luxTrend = getTrend(chartHistory, "lux", latestEntry.lux);
       const balance = latestEntry.fr === 0 ? 0 : latestEntry.bb / latestEntry.fr;
 
       return [
         {
-          metric: "Độ ổn định lux",
-          value: describeVolatility(luxStats.max - luxStats.min, 250, 900),
-          note: `Biên độ lux trong 20 mẫu là ${formatNumber(luxStats.max - luxStats.min, 0)}.`,
-        },
-        {
-          metric: "Đỉnh gần nhất",
+          metric: "Cường độ sáng đỉnh",
           value: formatMetricValue("lux", luxStats.max),
-          note: `Lux hiện ${luxTrend >= 0 ? "cao hơn" : "thấp hơn"} đầu chuỗi ${formatNumber(Math.abs(luxTrend), 0)}.`,
+          note: `Mức sáng cực đại trong 20 mẫu qua.`,
         },
         {
-          metric: "Tỷ lệ BB/FR",
+          metric: "Biến động ánh sáng",
+          value: describeVolatility(luxStats.max - luxStats.min, 200, 800),
+          note: `Biên độ dao động nguồn sáng: ${formatNumber(luxStats.max - luxStats.min, 0)} lux.`,
+        },
+        {
+          metric: "Tỷ lệ BB/FR (Băng rộng/Hồng ngoại)",
           value: `${formatNumber(balance, 2)}`,
-          note: balance >= 2 ? "Phổ đang nghiêng về BB." : "Phổ đang khá cân bằng với FR.",
+          note: balance >= 2 ? "Băng rộng chiếm ưu thế." : "Cân bằng hoặc hồng ngoại cao.",
         },
         {
-          metric: "Biến động phổ",
-          value: describeVolatility((bbStats.max - bbStats.min) / 1000 + (frStats.max - frStats.min) / 1000, 8, 20),
-          note: `BB dao động ${formatCompact(bbStats.max - bbStats.min)}, FR dao động ${formatCompact(frStats.max - frStats.min)}.`,
+          metric: "Xu hướng sáng",
+          value: luxTrend === 0 ? "Ổn định" : luxTrend > 0 ? "Tăng dần" : "Giảm dần",
+          note: `Ánh sáng thay đổi ${luxTrend === 0 ? "ổn định" : `${luxTrend > 0 ? "tăng" : "giảm"} ${Math.abs(luxTrend).toFixed(0)} lux`} trong 20 mẫu qua.`,
         },
       ];
     }
 
     if (selectedTab === "uv") {
       const uviStats = getStatWindow(chartHistory, "uvi");
-      const uvaStats = getStatWindow(chartHistory, "uva");
-      const uvbStats = getStatWindow(chartHistory, "uvb");
       const uviTrend = getTrend(chartHistory, "uvi", latestEntry.uvi);
       const uvMix = latestEntry.uvb === 0 ? latestEntry.uva : latestEntry.uva / latestEntry.uvb;
 
       return [
         {
-          metric: "Mức phơi nhiễm",
+          metric: "Mức phơi nhiễm UV",
           value: uvStatus.label,
-          note: uvStatus.note,
+          note: `Mức độ phơi nhiễm tia cực tím (UVI hiện tại: ${latestEntry.uvi.toFixed(2)}).`,
         },
         {
-          metric: "Biên độ UVI",
-          value: formatNumber(uviStats.max - uviStats.min, 1),
-          note: `UVI ${uviTrend >= 0 ? "tăng" : "giảm"} ${formatNumber(Math.abs(uviTrend), 1)} trong 20 mẫu.`,
-        },
-        {
-          metric: "Nghiêng UVA/UVB",
-          value: `${formatNumber(uvMix, 2)}`,
-          note: uvMix >= 8 ? "UVA chiếm ưu thế rõ rệt." : "UVB đang tăng tỷ trọng.",
-        },
-        {
-          metric: "Đỉnh UV gần nhất",
+          metric: "Đỉnh chỉ số UVI",
           value: formatMetricValue("uvi", uviStats.max),
-          note: `UVA tối đa ${formatMetricValue("uva", uvaStats.max)}, UVB tối đa ${formatMetricValue("uvb", uvbStats.max)}.`,
+          note: `Chỉ số UVI cực đại trong 20 mẫu qua.`,
+        },
+        {
+          metric: "Tỷ lệ UVA/UVB",
+          value: `${formatNumber(uvMix, 2)}`,
+          note: uvMix >= 8 ? "Tia UVA chiếm ưu thế." : "Tia UVB có xu hướng tăng.",
+        },
+        {
+          metric: "Xu hướng UVI",
+          value: uviTrend === 0 ? "Ổn định" : uviTrend > 0 ? "Tăng dần" : "Giảm dần",
+          note: `Chỉ số UV thay đổi ${uviTrend === 0 ? "ổn định" : `${uviTrend > 0 ? "tăng" : "giảm"} ${Math.abs(uviTrend).toFixed(2)}`} trong 20 mẫu qua.`,
         },
       ];
     }
 
     const soundRange = getStatWindow(chartHistory, "sound");
     const soundTrend = getTrend(chartHistory, "sound", latestEntry.sound);
-    const alertsInWindow = chartHistory.filter((entry) => entry.sound >= 80).length;
+    const alertsInWindow = chartHistory.filter((entry) => entry.sound >= 2000).length;
 
     return [
       {
-        metric: "Mức nền",
+        metric: "Mức âm thanh nền",
         value: formatMetricValue("sound", soundRange.min),
-        note: "Mức thấp nhất trong 20 mẫu gần nhất, dùng làm nền so sánh.",
+        note: "Mức âm thanh nền tối thiểu trong 20 mẫu qua.",
       },
       {
-        metric: "Đỉnh gần nhất",
+        metric: "Cường độ âm đỉnh",
         value: formatMetricValue("sound", soundRange.max),
-        note: `Âm thanh hiện ${soundTrend >= 0 ? "cao hơn" : "thấp hơn"} đầu chuỗi ${formatNumber(Math.abs(soundTrend), 0)} dBA.`,
+        note: "Cực đại độ ồn trong 20 mẫu qua.",
       },
       {
-        metric: "Vượt ngưỡng",
+        metric: "Sự kiện vượt ngưỡng",
         value: `${alertsInWindow} lần`,
-        note: alertsInWindow ? "Đã chạm ngưỡng 80 dBA trong cửa sổ hiện tại." : "Chưa vượt ngưỡng 80 dBA trong 20 mẫu gần nhất.",
+        note: alertsInWindow ? "Đã phát hiện độ ồn vượt ngưỡng cảnh báo 2000 dBA." : "Chưa phát hiện sự kiện vượt ngưỡng 2000 dBA.",
       },
       {
-        metric: "Độ dao động",
-        value: describeVolatility(soundRange.max - soundRange.min, 8, 18),
-        note: `Biên độ âm thanh là ${formatNumber(soundRange.max - soundRange.min, 0)} dBA.`,
+        metric: "Xu hướng độ ồn",
+        value: soundTrend === 0 ? "Ổn định" : soundTrend > 0 ? "Tăng dần" : "Giảm dần",
+        note: `Độ ồn thay đổi ${soundTrend === 0 ? "ổn định" : `${soundTrend > 0 ? "tăng" : "giảm"} ${Math.abs(soundTrend).toFixed(0)} dBA`} trong 20 mẫu qua.`,
       },
     ];
   })();
@@ -2211,25 +2387,16 @@ const EnvironmentSensorDashboard = ({
             />
           </div>
 
-          <div className="mt-6 grid gap-4 lg:mt-8 xl:grid-cols-[minmax(0,1.9fr)_minmax(320px,360px)]">
+          <div className="mt-6 flex flex-col gap-4 lg:mt-8">
             <section className="min-w-0 rounded-lg border border-border/60 bg-card p-4 shadow-sm sm:p-5 lg:p-6">
-              <div className="flex flex-col gap-5">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                      Biểu đồ chính
-                    </p>
-                    <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-foreground">
-                      {tabDefinition.title}
-                    </h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                      {tabDefinition.subtitle}
-                    </p>
-                  </div>
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-1 items-center gap-3 sm:grid-cols-2">
+                  <h2 className="text-2xl font-semibold tracking-[-0.04em] text-foreground">
+                    {tabDefinition.title}
+                  </h2>
 
-                  <div className="flex flex-col gap-3">
-                    <div className="-mx-1 overflow-x-auto px-1 pb-1">
-                      <div className="flex min-w-max flex-nowrap gap-2">
+                  <div className="-mx-1 overflow-x-auto px-1 pb-1 sm:justify-self-end">
+                    <div className="flex min-w-max flex-nowrap justify-start gap-2 sm:justify-end">
                       {Object.entries(TAB_CONFIG).map(([key, tab]) => (
                         <button
                           key={key}
@@ -2245,14 +2412,11 @@ const EnvironmentSensorDashboard = ({
                           {tab.label}
                         </button>
                       ))}
-                      </div>
                     </div>
-
-                    <div className="flex justify-end" />
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+                <div className="flex w-fit flex-wrap gap-2">
                   <MetricSummaryCard
                     title="Hiện tại"
                     datasets={tabDefinition.datasets}
@@ -2270,7 +2434,7 @@ const EnvironmentSensorDashboard = ({
                 </div>
 
                 <div className="h-[280px] overflow-hidden rounded-lg border border-border/60 bg-card/90 p-3 dark:bg-slate-900/80 sm:h-[340px] sm:p-4 lg:h-[430px]">
-                  <Line data={chartData} options={chartOptions} />
+                  <Line ref={chartRef} data={chartData} options={chartOptions} />
                 </div>
               </div>
             </section>
@@ -2382,7 +2546,12 @@ export const DashboardSection = (props) => {
   });
 
   if (deviceType === "cảm biến không khí") {
-    return <AirSensorDashboardPlaceholder selectedDevice={props.selectedDevice} />;
+    return (
+      <AirSensorDashboard
+        {...props}
+        selectedDeviceSnapshot={selectedDeviceSnapshot}
+      />
+    );
   }
 
   return (

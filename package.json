@@ -13,6 +13,7 @@
     "@radix-ui/react-toast": "^1.2.10",
     "@tailwindcss/vite": "^4.1.4",
     "chart.js": "^4.5.1",
+    "chartjs-plugin-zoom": "^2.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lodash": "^4.17.21",

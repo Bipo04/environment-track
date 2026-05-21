@@ -2,12 +2,11 @@
 import { useState, useEffect, useRef } from 'react';
 
 const DB_LEVELS = [
-  { max: 30, label: 'Im lặng', color: '#22c55e', emoji: '🔇' },
-  { max: 60, label: 'Thư viện', color: '#84cc16', emoji: '📚' },
-  { max: 70, label: 'Hội thoại', color: '#eab308', emoji: '🗣️' },
-  { max: 85, label: 'Văn phòng', color: '#f97316', emoji: '💼' },
-  { max: 100, label: 'Công trường', color: '#ef4444', emoji: '🏗️' },
-  { max: 999, label: 'Nhạc lớn', color: '#8b5cf6', emoji: '🎸' },
+  { max: 300, label: 'Yên tĩnh', color: '#22c55e', emoji: '🔇' },
+  { max: 700, label: 'Bình thường', color: '#22c55e', emoji: '📚' },
+  { max: 1200, label: 'Ồn', color: '#f97316', emoji: '💼' },
+  { max: 2000, label: 'Cảnh báo', color: '#ef4444', emoji: '🏗️' },
+  { max: 4095, label: 'Rất ồn', color: '#a855f7', emoji: '📢' },
 ];
 
 const getDbInfo = (db) => DB_LEVELS.find(l => db <= l.max) || DB_LEVELS[DB_LEVELS.length - 1];
@@ -20,7 +19,7 @@ const EqualizerBars = ({ db }) => {
   const targetRef = useRef(bars);
 
   useEffect(() => {
-    const intensity = Math.min(db / 110, 1);
+    const intensity = Math.min(db / 4095, 1);
     const animate = () => {
       targetRef.current = targetRef.current.map((v, i) => {
         const noise = (Math.random() - 0.5) * 0.3;
@@ -36,9 +35,9 @@ const EqualizerBars = ({ db }) => {
 
   const getBarColor = (height) => {
     if (height < 0.4) return '#22c55e';
-    if (height < 0.65) return '#eab308';
-    if (height < 0.85) return '#f97316';
-    return '#ef4444';
+    if (height < 0.65) return '#f97316';
+    if (height < 0.85) return '#ef4444';
+    return '#a855f7';
   };
 
   return (
@@ -61,30 +60,30 @@ const EqualizerBars = ({ db }) => {
 
 // dB scale with indicator
 const DBScale = ({ db }) => {
-  const clamp = Math.min(Math.max(db, 0), 110);
-  const pct = (clamp / 110) * 100;
+  const clampValue = Math.min(Math.max(db, 0), 4095);
+  const pct = (clampValue / 4095) * 100;
   return (
     <div className="relative">
       <div className="h-3 rounded-full overflow-hidden"
-        style={{ background: 'linear-gradient(to right, #22c55e, #84cc16, #eab308, #f97316, #ef4444, #8b5cf6)' }}
+        style={{ background: 'linear-gradient(to right, #22c55e, #22c55e, #f97316, #ef4444, #a855f7)' }}
       />
       <div
         className="absolute top-1/2 -translate-y-1/2 w-2 h-5 -ml-1 rounded-sm bg-white shadow-lg"
         style={{ left: `${pct}%`, boxShadow: '0 0 8px rgba(255,255,255,0.9)', transition: 'left 0.5s ease' }}
       />
       <div className="flex justify-between text-[9px] text-muted-foreground mt-2">
-        <span>0<br/><span className="text-[8px]">(Im lặng)</span></span>
-        <span>30<br/><span className="text-[8px]">(Thư viện)</span></span>
-        <span>70<br/><span className="text-[8px]">(Hội thoại)</span></span>
-        <span>90<br/><span className="text-[8px]">(Công trường)</span></span>
-        <span>110+<br/><span className="text-[8px]">(Nhạc lớn)</span></span>
+        <span>0<br/><span className="text-[8px]">(Yên tĩnh)</span></span>
+        <span>300<br/><span className="text-[8px]">(Thường)</span></span>
+        <span>700<br/><span className="text-[8px]">(Ồn)</span></span>
+        <span>1200<br/><span className="text-[8px]">(Cảnh báo)</span></span>
+        <span>2000+<br/><span className="text-[8px]">(Rất ồn)</span></span>
       </div>
     </div>
   );
 };
 
 // sound prop comes from parent (useFakeSensorData or real WebSocket)
-export const SoundCard = ({ sound = 65 }) => {
+export const SoundCard = ({ sound = 800 }) => {
   const peakRef = useRef(sound);
   const avg1hRef = useRef(sound);
   const [peak, setPeak] = useState(sound);
@@ -115,7 +114,7 @@ export const SoundCard = ({ sound = 65 }) => {
       {/* Main dB value */}
       <div className="text-center">
         <p className="text-4xl font-extrabold" style={{ color: info.color }}>
-          {sound.toFixed(0)} <span className="text-xl font-bold">dB</span>
+          {sound.toFixed(0)} <span className="text-xl font-bold">dBA</span>
         </p>
         <div
           className="inline-flex items-center gap-1.5 mt-1.5 px-3 py-1 rounded-full text-xs font-semibold"

@@ -1,11 +1,11 @@
 // UV Sensor Card - kept close to original reference image
 
 const getUVIInfo = (uvi) => {
-  if (uvi <= 2) return { label: 'Thấp', risk: 'An toàn', color: '#22c55e', icon: '😊' };
-  if (uvi <= 5) return { label: 'Trung bình', risk: 'Cần che chắn', color: '#eab308', icon: '😐' };
-  if (uvi <= 7) return { label: 'Cao', risk: 'Cần che chắn', color: '#f97316', icon: '😬' };
-  if (uvi <= 10) return { label: 'Rất cao', risk: 'Hạn chế ra ngoài', color: '#ef4444', icon: '😰' };
-  return { label: 'Cực cao', risk: 'Tránh ra ngoài', color: '#8b5cf6', icon: '🆘' };
+  if (uvi <= 2) return { label: 'UV thấp', risk: 'An toàn', color: '#22c55e', icon: '😊' };
+  if (uvi <= 5) return { label: 'UV trung bình', risk: 'Cần che chắn', color: '#eab308', icon: '😐' };
+  if (uvi <= 7) return { label: 'UV cao', risk: 'Cần che chắn', color: '#f97316', icon: '😬' };
+  if (uvi <= 10) return { label: 'UV rất cao', risk: 'Hạn chế ra ngoài', color: '#ef4444', icon: '😰' };
+  return { label: 'UV cực đoan', risk: 'Tránh ra ngoài', color: '#a855f7', icon: '🆘' };
 };
 
 // UV color scale bar with indicator

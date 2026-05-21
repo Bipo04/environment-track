@@ -20,6 +20,8 @@ const EMPTY_SENSOR_DATA = {
   pm1: 0,
   pm25: 0,
   pm10: 0,
+  pm25_aqi: 0,
+  pm10_aqi: 0,
   aqi: 0,
   timestamp: "",
   topic: "",
@@ -52,6 +54,8 @@ const normalizePayload = (data, topic) => ({
   pm1: parseNumeric(data?.pm1 ?? data?.PM1),
   pm25: parseNumeric(data?.pm25 ?? data?.PM25 ?? data?.pm2_5 ?? data?.pm2dot5),
   pm10: parseNumeric(data?.pm10 ?? data?.PM10),
+  pm25_aqi: parseNumeric(data?.pm25_aqi ?? data?.pm25Aqi ?? data?.pm2_5_aqi),
+  pm10_aqi: parseNumeric(data?.pm10_aqi ?? data?.pm10Aqi),
   aqi: parseNumeric(data?.aqi ?? data?.AQI),
   timestamp: data?.timestamp || data?.time || new Date().toLocaleString(),
   topic,
@@ -89,13 +93,55 @@ export const useDeviceMqttData = ({ topic, enabled = true } = {}) => {
         return;
       }
 
+      const rawStr = message.toString().trim();
+      const isJson = rawStr.startsWith("{") || rawStr.startsWith("[");
+
+      // Check if this is comma-separated air sensor data: "pm2.5, pm2.5_aqi, pm10, pm10_aqi"
+      if (!isJson && (receivedTopic.startsWith("dust_v2/") || rawStr.includes(","))) {
+        const parts = rawStr.split(",").map(part => part.trim());
+        if (parts.length >= 4) {
+          const pm25 = parseNumeric(parts[0]);
+          const pm25_aqi = parseNumeric(parts[1]);
+          const pm10 = parseNumeric(parts[2]);
+          const pm10_aqi = parseNumeric(parts[3]);
+          setSensorData({
+            ...EMPTY_SENSOR_DATA,
+            pm25,
+            pm25_aqi,
+            pm10,
+            pm10_aqi,
+            timestamp: new Date().toLocaleString(),
+            topic: receivedTopic,
+          });
+          return;
+        }
+      }
+
       try {
-        const payload = JSON.parse(message.toString());
+        const payload = JSON.parse(rawStr);
         const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
         console.log("Received data:", data);
         setSensorData(normalizePayload(data, receivedTopic));
       } catch (error) {
-        console.error("Parse error:", error);
+        // Fallback check: if parsing as JSON failed, check if it's comma-separated text
+        const parts = rawStr.split(",").map(part => part.trim());
+        if (parts.length >= 4) {
+          const pm25 = parseNumeric(parts[0]);
+          const pm25_aqi = parseNumeric(parts[1]);
+          const pm10 = parseNumeric(parts[2]);
+          const pm10_aqi = parseNumeric(parts[3]);
+          setSensorData({
+            ...EMPTY_SENSOR_DATA,
+            pm25,
+            pm25_aqi,
+            pm10,
+            pm10_aqi,
+            timestamp: new Date().toLocaleString(),
+            topic: receivedTopic,
+          });
+        } else {
+          console.error("Parse error:", error);
+        }
       }
     });
 
