@@ -8,7 +8,7 @@ import { authService } from "@/services/authService";
 
 const navItems = [
   { name: "Trang chủ", href: "/" },
-  { name: "Dữ liệu live", href: "/dashboard" },
+  { name: "Dữ liệu live", href: "/live" },
   { name: "Lịch sử", href: "/history" },
 ];
 

@@ -18,7 +18,7 @@ function App() {
         <Routes>
           <Route index element={<Home />} />
           {/* <Route path="/live" element={<LivePage />} /> */}
-          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/live" element={<DashboardPage />} />
           {/* <Route path="/chart" element={<ChartPage />} /> */}
           <Route path="/login" element={<LoginPage />} />
           <Route 

@@ -4,8 +4,7 @@ import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DEVICE_TYPES = [
-  'Cảm biến môi trường',
-  'Cảm biến không khí'
+  'Cảm biến môi trường'
 ];
 
 // ─── Registration Modal ────────────────────────────────────────────────
@@ -77,22 +76,7 @@ const LegacyRegisterModal = ({ onClose, onConfirm }) => {
             />
           </div>
 
-          {/* Device Type */}
-          <div>
-            <label className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1.5 block">
-              Loại Thiết Bị
-            </label>
-            <select
-              id="modal-select-device-type"
-              value={form.type}
-              onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
-              className="w-full px-4 py-2.5 text-sm rounded-xl bg-background/80 border border-border/60 text-foreground focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/20 transition-all"
-            >
-              {DEVICE_TYPES.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </div>
+
 
           {/* Location */}
           <div>
@@ -220,7 +204,6 @@ export const LegacyDeviceSidebar = ({ className = "" }) => {
 
 const MODERN_DEVICE_TYPES = [
   "Cảm biến môi trường",
-  "Cảm biến không khí",
 ];
 
 const RegisterDeviceModal = ({ devices, onClose, onConfirm }) => {
@@ -307,25 +290,7 @@ const RegisterDeviceModal = ({ devices, onClose, onConfirm }) => {
             />
           </div>
 
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Loại thiết bị
-            </label>
-            <select
-              id="modal-select-device-type"
-              value={form.type}
-              onChange={(event) =>
-                setForm((previous) => ({ ...previous, type: event.target.value }))
-              }
-              className="w-full rounded-xl border border-border/60 bg-background/80 px-4 py-2.5 text-sm text-foreground transition-all focus:outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/20"
-            >
-              {MODERN_DEVICE_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </div>
+
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">

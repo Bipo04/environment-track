@@ -1,5 +1,7 @@
 import { useMemo } from "react";
-import { Activity, ArrowDownRight, ArrowUpRight } from "lucide-react";
+import PropTypes from "prop-types";
+import { Wind } from "lucide-react";
+import { OverviewSurface, RingGauge, StatusBanner } from "./EnvironmentOverviewCards";
 
 // Standard Vietnam/EPA AQI color scale for PM10
 const getAqiInfo = (aqi) => {
@@ -63,94 +65,61 @@ const getAqiInfo = (aqi) => {
   };
 };
 
-// Sparkline builder
-const MiniSparkline = ({ values, color, height = 40 }) => {
-  if (!values || !values.length) {
-    return <div className="h-10 w-24 rounded bg-muted/20" />;
-  }
-
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const width = 100;
-
-  const points = values.map((val, index) => {
-    const x = values.length === 1 ? width : (index / (values.length - 1)) * width;
-    const y = max === min ? height / 2 : height - ((val - min) / (max - min)) * (height - 8) - 4;
-    return `${x},${y}`;
-  });
+export const PM10Card = ({ pm10 = 0, aqi = 0, history = [], isDarkMode = false }) => {
+  const aqiInfo = useMemo(() => getAqiInfo(aqi), [aqi]);
+  const maxPm10 = useMemo(() => (history.length ? Math.max(...history) : pm10), [history, pm10]);
 
   return (
-    <svg className="h-10 w-24 overflow-visible" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-      <polyline
-        points={points.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+    <OverviewSurface
+      icon={Wind}
+      title="Bụi mịn PM10"
+      accent={aqiInfo.color}
+      variant="panel"
+      bodyClassName="flex flex-1 flex-col"
+    >
+      <div className="flex flex-col items-center justify-center pt-2">
+        <RingGauge
+          valueText={`${aqi}`}
+          label="Chỉ số AQI"
+          status={aqiInfo.label}
+          accent={aqiInfo.color}
+          percent={aqi / 300}
+          minLabel="0"
+          maxLabel="300"
+          showStatus={false}
+          isDarkMode={isDarkMode}
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-4 border-t border-border/60 pt-4 dark:border-slate-800/90">
+        <div className="text-center">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Nồng độ</p>
+          <p className="mt-1 text-base font-semibold text-foreground">
+            {pm10.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">µg/m³</span>
+          </p>
+        </div>
+        <div className="text-center">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Đỉnh 24h</p>
+          <p className="mt-1 text-base font-semibold text-foreground">
+            {maxPm10.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">µg/m³</span>
+          </p>
+        </div>
+      </div>
+
+      <StatusBanner
+        accent={aqiInfo.color}
+        label={`${aqiInfo.label}`}
+        note={aqiInfo.description}
+        withDivider
+        className="mt-auto w-full text-left"
       />
-    </svg>
+    </OverviewSurface>
   );
 };
 
-export const PM10Card = ({ pm10 = 0, aqi = 0, history = [] }) => {
-  const aqiInfo = useMemo(() => getAqiInfo(aqi), [aqi]);
-
-  // Stats calculation
-  const maxPm10 = useMemo(() => (history.length ? Math.max(...history) : pm10), [history, pm10]);
-
-  // Calculate trend
-  const trend = useMemo(() => {
-    if (history.length < 2) return 0;
-    return history[history.length - 1] - history[Math.max(0, history.length - 5)];
-  }, [history]);
-
-  const TrendIcon = trend >= 0 ? ArrowUpRight : ArrowDownRight;
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-card/80 backdrop-blur-sm p-5 flex flex-col gap-4 hover:border-primary/30 transition-all duration-300 hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-0.5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div>
-            <span className="text-xs font-bold text-foreground/80 uppercase tracking-wide">Chất lượng không khí PM10</span>
-            <p className="text-[9px] text-muted-foreground leading-none">Bụi mịn hạt thô đường kính ≤ 10µm</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Info Row */}
-      <div className="flex justify-between items-center gap-4 mt-1">
-        <div className="flex-1">
-          <div className="flex items-baseline gap-1">
-            <span className="text-4xl font-extrabold text-foreground tracking-tight">
-              {pm10.toFixed(1)}
-            </span>
-            <span className="text-xs text-muted-foreground">µg/m³</span>
-          </div>
-          
-        </div>
-      </div>
-
-      {/* Warning/Description */}
-      <p className="text-xs text-muted-foreground leading-relaxed italic bg-white/5 p-2 rounded-lg border border-border/20">
-        {aqiInfo.description}
-      </p>
-
-      {/* Quick stats grid */}
-      <div className="grid grid-cols-2 gap-2 mt-auto">
-        <div className="text-center px-3 py-2 rounded-xl bg-background/60 border border-border/40 flex flex-col justify-center items-center">
-          <p className="text-[9px] text-muted-foreground uppercase tracking-wider">AQI</p>
-          <p className="text-sm font-bold" style={{ color: aqiInfo.color }}>{aqi} - {aqiInfo.label}</p>
-        </div>
-        <div className="text-center px-3 py-2 rounded-xl bg-background/60 border border-border/40 flex flex-col justify-center items-center">
-          <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Đỉnh 24h</p>
-          <p className="text-sm font-bold text-foreground">{maxPm10.toFixed(1)} µg/m³</p>
-        </div>
-      </div>
-
-      {/* Background radial glow */}
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/2 to-emerald-500/2 pointer-events-none rounded-2xl" />
-    </div>
-  );
+PM10Card.propTypes = {
+  pm10: PropTypes.number,
+  aqi: PropTypes.number,
+  history: PropTypes.arrayOf(PropTypes.number),
+  isDarkMode: PropTypes.bool,
 };
