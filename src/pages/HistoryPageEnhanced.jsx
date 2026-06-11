@@ -1899,12 +1899,14 @@ export const HistoryPage = () => {
 
       <main className="px-2 pb-8 pt-18 sm:px-4 sm:pt-20 lg:px-6">
         <div className="mx-auto w-full max-w-[1700px] rounded-[28px] border border-border/50 bg-card/80 shadow-2xl backdrop-blur-sm">
-          <div className="flex min-h-[calc(100vh-7rem)] overflow-hidden rounded-[28px]">
-            <aside className="hidden border-r border-border/50 bg-card/70 lg:block">
-              <DeviceSidebar {...sidebarProps} />
+          <div className="flex min-h-[calc(100vh-7rem)] rounded-[28px]">
+            <aside className="hidden border-r border-border/50 bg-card/70 rounded-l-[28px] w-64 shrink-0 lg:block">
+              <div className="sticky top-[80px] h-[calc(100vh-120px)] z-10">
+                <DeviceSidebar className="border-none bg-transparent backdrop-blur-none h-full rounded-l-[28px]" {...sidebarProps} />
+              </div>
             </aside>
 
-            <section className="min-w-0 flex-1">
+            <section className="min-w-0 flex-1 rounded-r-[28px] overflow-hidden">
               <div className="border-b border-border/50 bg-linear-to-r from-sky-500/10 via-transparent to-emerald-500/10 px-5 py-6 sm:px-8">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>

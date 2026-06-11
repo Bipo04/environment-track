@@ -1,4 +1,4 @@
-import { Activity, Droplets, Sparkles, SunMedium, Thermometer, TriangleAlert, Volume2, Wind } from "lucide-react";
+import { Activity, Droplets, Minus, Sparkles, SunMedium, Thermometer, TriangleAlert, Volume2, Wind } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   clamp,
@@ -17,21 +17,35 @@ export const OverviewSurface = ({
   children,
   variant = "default",
   bodyClassName = "",
+  onHide,
 }) => {
   const isPanel = variant === "panel";
 
   return (
     <article
       className={cn(
-        "flex h-full min-h-0 flex-col text-foreground shadow-sm sm:min-h-[390px]",
+        "flex h-full min-h-0 flex-col text-foreground shadow-sm sm:min-h-[330px]",
         isPanel
           ? "relative overflow-hidden rounded-lg border border-border/70 bg-card/90 px-4 py-4 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.3)] sm:px-5 sm:py-5 lg:px-6 lg:py-6 dark:border-slate-800/90 dark:bg-slate-900/80 dark:shadow-[0_30px_70px_-48px_rgba(15,23,42,0.92)]"
           : "rounded-lg border border-border/70 bg-card/90 p-4 sm:p-5 dark:border-slate-800/90 dark:bg-slate-900/80",
       )}
     >
       {isPanel ? (
-        <div className="relative flex items-center gap-2.5 text-[11px] uppercase tracking-[0.22em] text-muted-foreground dark:text-slate-400">
+        <div className="relative flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-muted-foreground dark:text-slate-400 w-full">
           <span>{title}</span>
+          {onHide && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onHide();
+              }}
+              className="rounded-full p-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              title="Ẩn thẻ"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -205,7 +219,7 @@ export const StatusBanner = ({
 }) => (
   <div
     className={cn(
-      "flex h-[118px] flex-col overflow-hidden pt-4",
+      "flex h-[95px] flex-col overflow-hidden pt-3",
       withDivider && "border-t border-border/60 dark:border-slate-800/90",
       className
     )}
@@ -245,6 +259,7 @@ export const TemperatureHumidityOverviewCard = ({
   temperatureStatus,
   humidityStatus,
   isDarkMode,
+  onHide,
 }) => {
   const dewPoint = calculateDewPoint(temperature, humidity);
   const dewPointStatus = getDewPointStatus(dewPoint);
@@ -256,6 +271,7 @@ export const TemperatureHumidityOverviewCard = ({
       accent="#ff9b43"
       variant="panel"
       bodyClassName="flex flex-1 flex-col"
+      onHide={onHide}
     >
       <div className="grid grid-cols-2 gap-4 sm:gap-6">
         <RingGauge
@@ -319,13 +335,14 @@ export const TemperatureHumidityOverviewCard = ({
   );
 };
 
-export const LightOverviewCard = ({ lux, bb, fr, status }) => (
+export const LightOverviewCard = ({ lux, bb, fr, status, onHide }) => (
   <OverviewSurface
     icon={SunMedium}
     title="Cường độ ánh sáng"
     accent="#facc15"
     variant="panel"
     bodyClassName="flex flex-1 flex-col"
+    onHide={onHide}
   >
     <div className="space-y-5">
       <MetricBarRow
@@ -363,13 +380,14 @@ export const LightOverviewCard = ({ lux, bb, fr, status }) => (
   </OverviewSurface>
 );
 
-export const UvOverviewCard = ({ uva, uvb, uvi, status }) => (
+export const UvOverviewCard = ({ uva, uvb, uvi, status, onHide }) => (
   <OverviewSurface
     icon={Sparkles}
     title="Cảm biến UV"
     accent="#a855f7"
     variant="panel"
     bodyClassName="flex flex-1 flex-col"
+    onHide={onHide}
   >
     <div className="space-y-5">
       <MetricBarRow
@@ -407,13 +425,14 @@ export const UvOverviewCard = ({ uva, uvb, uvi, status }) => (
   </OverviewSurface>
 );
 
-export const SoundOverviewCard = ({ sound, status, values, isDarkMode }) => (
+export const SoundOverviewCard = ({ sound, status, values, isDarkMode, onHide }) => (
   <OverviewSurface
     icon={Volume2}
     title="Âm thanh"
     accent="#22d3ee"
     variant="panel"
     bodyClassName="flex flex-1 flex-col"
+    onHide={onHide}
   >
     <div className="flex flex-1 flex-col items-center text-center">
       <p className="text-[3.3rem] font-semibold leading-none tracking-[-0.06em] text-cyan-400">
@@ -440,7 +459,7 @@ export const SoundOverviewCard = ({ sound, status, values, isDarkMode }) => (
   </OverviewSurface>
 );
 
-export const Co2OverviewCard = ({ co2, isDarkMode }) => {
+export const Co2OverviewCard = ({ co2, isDarkMode, onHide }) => {
   const getCo2Status = (value) => {
     if (value <= 600) return { label: "Rất tốt", note: "Không khí rất trong lành, CO₂ ở mức lý tưởng.", accent: "#22c55e" };
     if (value <= 1000) return { label: "Bình thường", note: "Chất lượng không khí tốt, mức CO₂ chấp nhận được.", accent: "#34d399" };
@@ -462,6 +481,7 @@ export const Co2OverviewCard = ({ co2, isDarkMode }) => {
       accent={status.accent}
       variant="panel"
       bodyClassName="flex flex-1 flex-col"
+      onHide={onHide}
     >
       <div className="flex flex-col items-center text-center">
         <p className="mb-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Nồng độ CO₂</p>
@@ -525,7 +545,7 @@ const SPECTRAL_CHANNELS = [
   { key: "f8", label: "680nm", color: "#dc2626", name: "Đỏ" },
 ];
 
-export const SpectralOverviewCard = ({ f1, f2, f3, f4, f5, f6, f7, f8, clear, nir, flicker }) => {
+export const SpectralOverviewCard = ({ f1, f2, f3, f4, f5, f6, f7, f8, clear, nir, flicker, onHide }) => {
   const values = { f1, f2, f3, f4, f5, f6, f7, f8 };
 
   return (
@@ -535,6 +555,7 @@ export const SpectralOverviewCard = ({ f1, f2, f3, f4, f5, f6, f7, f8, clear, ni
       accent="#8b5cf6"
       variant="panel"
       bodyClassName="flex flex-1 flex-col"
+      onHide={onHide}
     >
       {/* Kênh phổ dưới dạng lưới hiển thị giá trị trực tiếp */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 py-1">

@@ -65,9 +65,8 @@ const getAqiInfo = (aqi) => {
   };
 };
 
-export const PM25Card = ({ pm25 = 0, aqi = 0, history = [], isDarkMode = false }) => {
+export const PM25Card = ({ pm25 = 0, aqi = 0, isDarkMode = false, onHide }) => {
   const aqiInfo = useMemo(() => getAqiInfo(aqi), [aqi]);
-  const maxPm25 = useMemo(() => (history.length ? Math.max(...history) : pm25), [history, pm25]);
 
   return (
     <OverviewSurface
@@ -76,6 +75,7 @@ export const PM25Card = ({ pm25 = 0, aqi = 0, history = [], isDarkMode = false }
       accent={aqiInfo.color}
       variant="panel"
       bodyClassName="flex flex-1 flex-col"
+      onHide={onHide}
     >
       <div className="flex flex-col items-center justify-center pt-2">
         <RingGauge
@@ -91,19 +91,11 @@ export const PM25Card = ({ pm25 = 0, aqi = 0, history = [], isDarkMode = false }
         />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-4 border-t border-border/60 pt-4 dark:border-slate-800/90">
-        <div className="text-center">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Nồng độ</p>
-          <p className="mt-1 text-base font-semibold text-foreground">
-            {pm25.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">µg/m³</span>
-          </p>
-        </div>
-        <div className="text-center">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Đỉnh 24h</p>
-          <p className="mt-1 text-base font-semibold text-foreground">
-            {maxPm25.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">µg/m³</span>
-          </p>
-        </div>
+      <div className="mt-4 border-t border-border/60 pt-4 text-center dark:border-slate-800/90">
+        <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Nồng độ bụi mịn</p>
+        <p className="mt-1 text-base font-semibold text-foreground">
+          {pm25.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">µg/m³</span>
+        </p>
       </div>
 
       <StatusBanner
@@ -120,6 +112,6 @@ export const PM25Card = ({ pm25 = 0, aqi = 0, history = [], isDarkMode = false }
 PM25Card.propTypes = {
   pm25: PropTypes.number,
   aqi: PropTypes.number,
-  history: PropTypes.arrayOf(PropTypes.number),
   isDarkMode: PropTypes.bool,
+  onHide: PropTypes.func,
 };

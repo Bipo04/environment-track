@@ -81,11 +81,12 @@ const AIR_TAB_CONFIG = {
 };
 
 const MIN_CHART_SPAN = {
-  pm25: 10,
-  pm10: 20,
-  pm25_aqi: 30,
-  pm10_aqi: 30,
+  pm25: 15,
+  pm10: 25,
+  pm25_aqi: 50,
+  pm10_aqi: 50,
 };
+
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -237,6 +238,20 @@ const formatAxisTimestamp = (time) =>
 
 const getMetricSeries = (entries, key) => entries.map((entry) => Number(entry[key]) || 0);
 
+const MIN_CHART_LIMIT = {
+  pm25: 0,
+  pm10: 0,
+  pm25_aqi: 0,
+  pm10_aqi: 0,
+};
+
+const MAX_CHART_LIMIT = {
+  pm25: 500,
+  pm10: 600,
+  pm25_aqi: 500,
+  pm10_aqi: 500,
+};
+
 const getAxisBounds = (entries, datasets, axisId) => {
   const axisDatasets = datasets.filter((dataset) => dataset.yAxisID === axisId);
   if (!axisDatasets.length) {
@@ -256,11 +271,18 @@ const getAxisBounds = (entries, datasets, axisId) => {
   const midpoint = (minValue + maxValue) / 2;
   const padding = finalSpan * 0.15;
 
+  const calculatedMin = midpoint - finalSpan / 2 - padding;
+  const calculatedMax = midpoint + finalSpan / 2 + padding;
+
+  const minLimit = Math.min(...axisDatasets.map((dataset) => MIN_CHART_LIMIT[dataset.key] !== undefined ? MIN_CHART_LIMIT[dataset.key] : 0));
+  const maxLimit = Math.max(...axisDatasets.map((dataset) => MAX_CHART_LIMIT[dataset.key] !== undefined ? MAX_CHART_LIMIT[dataset.key] : 100000));
+
   return {
-    min: Math.max(0, midpoint - finalSpan / 2 - padding),
-    max: midpoint + finalSpan / 2 + padding,
+    min: Math.max(minLimit, calculatedMin),
+    max: Math.min(maxLimit, calculatedMax),
   };
 };
+
 
 const getTrend = (entries, key, fallbackValue = 0) => {
   if (entries.length < 2) {
@@ -606,6 +628,25 @@ export const AirSensorDashboard = ({
   }, [chartHistory]);
 
   const chartOptions = useMemo(() => {
+    const yBounds = getAxisBounds(chartHistory, tabDefinition.datasets, "y");
+    const y1Bounds = getAxisBounds(chartHistory, tabDefinition.datasets, "y1");
+
+    const yDatasets = tabDefinition.datasets.filter((d) => d.yAxisID === "y" || !d.yAxisID);
+    const yLimitMin = yDatasets.length
+      ? Math.min(...yDatasets.map((d) => (MIN_CHART_LIMIT[d.key] !== undefined ? MIN_CHART_LIMIT[d.key] : 0)))
+      : undefined;
+    const yLimitMax = yDatasets.length
+      ? Math.max(...yDatasets.map((d) => (MAX_CHART_LIMIT[d.key] !== undefined ? MAX_CHART_LIMIT[d.key] : 100000)))
+      : undefined;
+
+    const y1Datasets = tabDefinition.datasets.filter((d) => d.yAxisID === "y1");
+    const y1LimitMin = y1Datasets.length
+      ? Math.min(...y1Datasets.map((d) => (MIN_CHART_LIMIT[d.key] !== undefined ? MIN_CHART_LIMIT[d.key] : 0)))
+      : undefined;
+    const y1LimitMax = y1Datasets.length
+      ? Math.max(...y1Datasets.map((d) => (MAX_CHART_LIMIT[d.key] !== undefined ? MAX_CHART_LIMIT[d.key] : 100000)))
+      : undefined;
+
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -653,6 +694,20 @@ export const AirSensorDashboard = ({
           },
         },
         zoom: {
+          limits: {
+            y: {
+              min: yLimitMin,
+              max: yLimitMax,
+            },
+            ...(y1Datasets.length
+              ? {
+                  y1: {
+                    min: y1LimitMin,
+                    max: y1LimitMax,
+                  },
+                }
+              : {}),
+          },
           zoom: {
             wheel: {
               enabled: true,
@@ -687,6 +742,8 @@ export const AirSensorDashboard = ({
         },
         y: {
           position: "left",
+          suggestedMin: yBounds.min !== undefined ? yBounds.min : 0,
+          suggestedMax: yBounds.max !== undefined ? yBounds.max : undefined,
           grid: {
             color: isDarkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.18)",
           },
@@ -711,6 +768,8 @@ export const AirSensorDashboard = ({
         },
         y1: {
           position: "right",
+          suggestedMin: y1Bounds.min !== undefined ? y1Bounds.min : 0,
+          suggestedMax: y1Bounds.max !== undefined ? y1Bounds.max : undefined,
           grid: {
             drawOnChartArea: false,
           },
@@ -735,7 +794,7 @@ export const AirSensorDashboard = ({
         },
       },
     };
-  }, [tabDefinition, isDarkMode]);
+  }, [tabDefinition, isDarkMode, selectedDevice?.id]); // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const pm10HistoryData = useMemo(() => sparklineHistory.map((item) => item.pm10), [sparklineHistory]);
   const pm25HistoryData = useMemo(() => sparklineHistory.map((item) => item.pm25), [sparklineHistory]);

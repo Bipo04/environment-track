@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import {
-  Activity,
-  ArrowDownRight,
-  ArrowUpRight,
+  ChevronDown,
   Droplets,
   Sparkles,
   SunMedium,
   Thermometer,
   TriangleAlert,
   Volume2,
+  Plus,
 } from "lucide-react";
 import {
   Chart as ChartJS,
@@ -682,15 +681,79 @@ export const formatAxisTimestamp = (time, rangeKey) => {
 export const getMetricSeries = (entries, key) => entries.map((entry) => Number(entry[key]) || 0);
 
 const MIN_CHART_SPAN = {
-  temperature: 2,
-  humidity: 8,
-  lux: 500,
-  bb: 3000,
-  fr: 1500,
-  uvi: 1.5,
-  uva: 1,
-  uvb: 0.3,
-  sound: 500,
+  pm25: 15,
+  pm10: 25,
+  pm25_aqi: 50,
+  pm10_aqi: 50,
+  temperature: 4,
+  humidity: 15,
+  lux: 1000,
+  bb: 5000,
+  fr: 2500,
+  uvi: 2.0,
+  uva: 2,
+  uvb: 0.5,
+  sound: 600,
+  co2: 150,
+  f1: 150,
+  f2: 150,
+  f3: 150,
+  f4: 150,
+  f5: 150,
+  f6: 150,
+  f7: 150,
+  f8: 150,
+};
+
+
+const MIN_CHART_LIMIT = {
+  temperature: -40,
+  humidity: 0,
+  lux: 0,
+  bb: 0,
+  fr: 0,
+  uvi: 0,
+  uva: 0,
+  uvb: 0,
+  sound: 0,
+  co2: 0,
+  f1: 0,
+  f2: 0,
+  f3: 0,
+  f4: 0,
+  f5: 0,
+  f6: 0,
+  f7: 0,
+  f8: 0,
+  pm25: 0,
+  pm10: 0,
+  pm25_aqi: 0,
+  pm10_aqi: 0,
+};
+
+const MAX_CHART_LIMIT = {
+  temperature: 60,
+  humidity: 100,
+  lux: 40000,
+  bb: 65535,
+  fr: 65535,
+  uvi: 15,
+  uva: 65535,
+  uvb: 65535,
+  sound: 2000,
+  co2: 5000,
+  f1: 65535,
+  f2: 65535,
+  f3: 65535,
+  f4: 65535,
+  f5: 65535,
+  f6: 65535,
+  f7: 65535,
+  f8: 65535,
+  pm25: 500,
+  pm10: 600,
+  pm25_aqi: 500,
+  pm10_aqi: 500,
 };
 
 export const getAxisBounds = (entries, datasets, axisId) => {
@@ -710,13 +773,20 @@ export const getAxisBounds = (entries, datasets, axisId) => {
   const minSpan = Math.max(...axisDatasets.map((dataset) => MIN_CHART_SPAN[dataset.key] || 1));
   const finalSpan = Math.max(dataSpan, minSpan);
   const midpoint = (minValue + maxValue) / 2;
-  const padding = finalSpan * 0.12;
+  const padding = finalSpan * 0.15; // 15% padding for breathing room
+
+  const calculatedMin = midpoint - finalSpan / 2 - padding;
+  const calculatedMax = midpoint + finalSpan / 2 + padding;
+
+  const minLimit = Math.min(...axisDatasets.map((dataset) => MIN_CHART_LIMIT[dataset.key] !== undefined ? MIN_CHART_LIMIT[dataset.key] : 0));
+  const maxLimit = Math.max(...axisDatasets.map((dataset) => MAX_CHART_LIMIT[dataset.key] !== undefined ? MAX_CHART_LIMIT[dataset.key] : 100000));
 
   return {
-    min: midpoint - finalSpan / 2 - padding,
-    max: midpoint + finalSpan / 2 + padding,
+    min: Math.max(minLimit, calculatedMin),
+    max: Math.min(maxLimit, calculatedMax),
   };
 };
+
 
 export const getTrend = (entries, key, fallbackValue = 0) => {
   if (entries.length < 2) {
@@ -1303,6 +1373,17 @@ export const MiniSparkline = ({ values, color, height = 84 }) => {
   );
 };
 
+const ALL_CARDS = {
+  pm25: { title: "Bụi mịn PM2.5" },
+  pm10: { title: "Bụi mịn PM10" },
+  co2: { title: "CO₂ — Khí Carbonic" },
+  tempHumidity: { title: "Nhiệt độ & Độ ẩm" },
+  light: { title: "Cường độ ánh sáng" },
+  uv: { title: "Cảm biến UV" },
+  sound: { title: "Âm thanh" },
+  spectral: { title: "Quang phổ AS7341" },
+};
+
 export const EnvironmentSensorDashboard = ({
   devices = [],
   selectedDevice = null,
@@ -1313,10 +1394,83 @@ export const EnvironmentSensorDashboard = ({
   const [historyByDevice, setHistoryByDevice] = useState({});
   const [selectedTab, setSelectedTab] = useState("pm25");
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isChartTabDropdownOpen, setIsChartTabDropdownOpen] = useState(false);
   const lastSampleKey = useRef("");
   const chartRef = useRef(null);
   const lastRecordedTime = useRef(0);
   const lastDeviceId = useRef("");
+
+  const DEFAULT_ORDER = [
+    "pm25",
+    "pm10",
+    "co2",
+    "tempHumidity",
+    "light",
+    "uv",
+    "sound",
+    "spectral",
+  ];
+
+  const [cardOrder, setCardOrder] = useState(() => {
+    try {
+      const stored = localStorage.getItem("envirotrack.dashboard.cardOrder");
+      return stored ? JSON.parse(stored) : DEFAULT_ORDER;
+    } catch {
+      return DEFAULT_ORDER;
+    }
+  });
+
+  const [visibleCards, setVisibleCards] = useState(() => {
+    try {
+      const stored = localStorage.getItem("envirotrack.dashboard.visibleCards");
+      return stored ? JSON.parse(stored) : DEFAULT_ORDER;
+    } catch {
+      return DEFAULT_ORDER;
+    }
+  });
+
+  const [isAddDropdownOpen, setIsAddDropdownOpen] = useState(false);
+  const [draggedCardKey, setDraggedCardKey] = useState(null);
+
+  const handleDragStart = (e, key) => {
+    setDraggedCardKey(key);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e, targetKey) => {
+    e.preventDefault();
+    if (!draggedCardKey || draggedCardKey === targetKey) return;
+
+    const oldIndex = cardOrder.indexOf(draggedCardKey);
+    const newIndex = cardOrder.indexOf(targetKey);
+
+    const updatedOrder = [...cardOrder];
+    updatedOrder.splice(oldIndex, 1);
+    updatedOrder.splice(newIndex, 0, draggedCardKey);
+
+    setCardOrder(updatedOrder);
+    localStorage.setItem("envirotrack.dashboard.cardOrder", JSON.stringify(updatedOrder));
+    setDraggedCardKey(null);
+  };
+
+  const handleHideCard = (key) => {
+    const updated = visibleCards.filter((c) => c !== key);
+    setVisibleCards(updated);
+    localStorage.setItem("envirotrack.dashboard.visibleCards", JSON.stringify(updated));
+  };
+
+  const handleShowCard = (key) => {
+    if (!visibleCards.includes(key)) {
+      const updated = [...visibleCards, key];
+      setVisibleCards(updated);
+      localStorage.setItem("envirotrack.dashboard.visibleCards", JSON.stringify(updated));
+    }
+    setIsAddDropdownOpen(false);
+  };
 
   useEffect(() => {
     const updateTheme = () => {
@@ -1496,11 +1650,7 @@ export const EnvironmentSensorDashboard = ({
           flicker: roundMetricValue("flicker", currentSnapshot.flicker),
         },
       ];
-  const rangeHistory = displayHistory.slice(-120);
   const chartHistory = displayHistory.slice(-20);
-  const cardHistory = displayHistory.slice(-18);
-  const pm10HistoryData = cardHistory.map((item) => item.pm10 || 0);
-  const pm25HistoryData = cardHistory.map((item) => item.pm25 || 0);
   const tabDefinition = TAB_CONFIG[selectedTab];
 
   const chartHistoryRef = useRef(chartHistory);
@@ -1509,6 +1659,25 @@ export const EnvironmentSensorDashboard = ({
   }, [chartHistory]);
 
   const chartOptions = useMemo(() => {
+    const yBounds = getAxisBounds(chartHistory, tabDefinition.datasets, "y");
+    const y1Bounds = getAxisBounds(chartHistory, tabDefinition.datasets, "y1");
+
+    const yDatasets = tabDefinition.datasets.filter((d) => d.yAxisID === "y" || !d.yAxisID);
+    const yLimitMin = yDatasets.length
+      ? Math.min(...yDatasets.map((d) => (MIN_CHART_LIMIT[d.key] !== undefined ? MIN_CHART_LIMIT[d.key] : 0)))
+      : undefined;
+    const yLimitMax = yDatasets.length
+      ? Math.max(...yDatasets.map((d) => (MAX_CHART_LIMIT[d.key] !== undefined ? MAX_CHART_LIMIT[d.key] : 100000)))
+      : undefined;
+
+    const y1Datasets = tabDefinition.datasets.filter((d) => d.yAxisID === "y1");
+    const y1LimitMin = y1Datasets.length
+      ? Math.min(...y1Datasets.map((d) => (MIN_CHART_LIMIT[d.key] !== undefined ? MIN_CHART_LIMIT[d.key] : 0)))
+      : undefined;
+    const y1LimitMax = y1Datasets.length
+      ? Math.max(...y1Datasets.map((d) => (MAX_CHART_LIMIT[d.key] !== undefined ? MAX_CHART_LIMIT[d.key] : 100000)))
+      : undefined;
+
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -1560,14 +1729,14 @@ export const EnvironmentSensorDashboard = ({
         zoom: {
           limits: {
             y: {
-              min: tabDefinition.datasets.some((d) => d.key === "temperature" && (d.yAxisID === "y" || !d.yAxisID))
-                ? undefined
-                : 0,
+              min: yLimitMin,
+              max: yLimitMax,
             },
-            ...(tabDefinition.datasets.some((d) => d.yAxisID === "y1")
+            ...(y1Datasets.length
               ? {
                   y1: {
-                    min: 0,
+                    min: y1LimitMin,
+                    max: y1LimitMax,
                   },
                 }
               : {}),
@@ -1602,14 +1771,14 @@ export const EnvironmentSensorDashboard = ({
             font: {
               family: "Space Grotesk, Segoe UI, sans-serif",
               size: 11,
+              weight: 500,
             },
           },
         },
         y: {
           position: "left",
-          min: tabDefinition.datasets.some((d) => d.key === "temperature" && (d.yAxisID === "y" || !d.yAxisID))
-            ? undefined
-            : 0,
+          suggestedMin: yBounds.min !== undefined ? yBounds.min : 0,
+          suggestedMax: yBounds.max !== undefined ? yBounds.max : undefined,
           grid: {
             color: isDarkMode ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.18)",
           },
@@ -1636,7 +1805,8 @@ export const EnvironmentSensorDashboard = ({
           ? {
               y1: {
                 position: "right",
-                min: 0,
+                suggestedMin: y1Bounds.min !== undefined ? y1Bounds.min : 0,
+                suggestedMax: y1Bounds.max !== undefined ? y1Bounds.max : undefined,
                 grid: {
                   drawOnChartArea: false,
                 },
@@ -1663,7 +1833,7 @@ export const EnvironmentSensorDashboard = ({
           : {}),
       },
     };
-  }, [isDarkMode, tabDefinition]);
+  }, [isDarkMode, tabDefinition, selectedDevice?.id]); // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const emptyStateTitle = !devices.length
     ? "Chưa đăng ký thiết bị nào"
@@ -1705,7 +1875,6 @@ export const EnvironmentSensorDashboard = ({
   }
 
   const latestEntry = displayHistory[displayHistory.length - 1];
-  const previousEntry = displayHistory[Math.max(0, displayHistory.length - 2)] || latestEntry;
   const temperatureStatus = getStatusStyles(
     "temperature",
     latestEntry.temperature,
@@ -1715,12 +1884,11 @@ export const EnvironmentSensorDashboard = ({
   const lightStatus = getStatusStyles("light", latestEntry.lux);
   const uvStatus = getStatusStyles("uv", latestEntry.uvi);
   const soundStatus = getStatusStyles("sound", latestEntry.sound);
-  const abnormalSoundEvents = displayHistory.filter((entry) => entry.sound >= 2000);
-  const soundBars = sampleHistory(cardHistory, 10).map((entry) => entry.sound);
+  const soundBars = sampleHistory(displayHistory.slice(-18), 10).map((entry) => entry.sound);
 
   const chartData = {
     labels: chartHistory.map((entry) => formatAxisTimestamp(entry.time, "24h")),
-    datasets: tabDefinition.datasets.map((dataset, index) => ({
+    datasets: tabDefinition.datasets.map((dataset) => ({
       label: dataset.label,
       data: chartHistory.map((entry) => entry[dataset.key]),
       borderColor: dataset.color,
@@ -1754,82 +1922,93 @@ export const EnvironmentSensorDashboard = ({
     })),
   };
 
-  const detailWindow = sampleHistory(rangeHistory, 30);
-  const temperatureStats = getStatWindow(detailWindow, "temperature");
-  const lightStats = getStatWindow(detailWindow, "lux");
-  const uvStats = getStatWindow(detailWindow, "uvi");
-  const soundStats = getStatWindow(detailWindow, "sound");
 
-  const detailCards = [
-    {
-      title: "Thermal detail",
-      icon: Thermometer,
-      accent: temperatureStatus.accent,
-      headline: `${formatMetricValue("temperature", temperatureStats.current)} now`,
-      description: `Humidity is holding at ${formatMetricValue(
-        "humidity",
-        latestEntry.humidity
-      )}, with a ${formatMetricValue(
-        "temperature",
-        temperatureStats.max - temperatureStats.min
-      ).replace("°C", "° range")} swing in the selected window.`,
-      values: getMetricSeries(detailWindow, "temperature"),
-      stats: [
-        { label: "Min", value: formatMetricValue("temperature", temperatureStats.min) },
-        {
-          label: "Avg",
-          value: formatMetricValue(
-            "humidity",
-            average(getMetricSeries(detailWindow, "humidity"))
-          ),
-        },
-        { label: "Max", value: formatMetricValue("temperature", temperatureStats.max) },
-      ],
-    },
-    {
-      title: "Light detail",
-      icon: SunMedium,
-      accent: lightStatus.accent,
-      headline: `${formatMetricValue("lux", lightStats.current)} ambient`,
-      description:
-        "BB and FR are shifting with the ambient curve, helping reveal spectrum balance rather than lux alone.",
-      values: getMetricSeries(detailWindow, "lux"),
-      stats: [
-        { label: "BB", value: formatMetricValue("bb", latestEntry.bb, true) },
-        { label: "Avg", value: formatMetricValue("lux", lightStats.avg) },
-        { label: "FR", value: formatMetricValue("fr", latestEntry.fr, true) },
-      ],
-    },
-    {
-      title: "UV detail",
-      icon: Sparkles,
-      accent: uvStatus.accent,
-      headline: `${formatMetricValue("uvi", uvStats.current)} current exposure`,
-      description:
-        "UV intensity rises and falls in step with light correlation, making peak windows easier to anticipate.",
-      values: getMetricSeries(detailWindow, "uvi"),
-      stats: [
-        { label: "UVA", value: formatMetricValue("uva", latestEntry.uva) },
-        { label: "Peak", value: formatMetricValue("uvi", uvStats.max) },
-        { label: "UVB", value: formatMetricValue("uvb", latestEntry.uvb) },
-      ],
-    },
-    {
-      title: "Acoustic detail",
-      icon: Volume2,
-      accent: soundStatus.accent,
-      headline: `${formatMetricValue("sound", soundStats.current)} acoustic load`,
-      description:
-        "Noise spikes are separated from the background floor so abnormal events stand out immediately.",
-      values: getMetricSeries(detailWindow, "sound"),
-      stats: [
-        { label: "Floor", value: formatMetricValue("sound", soundStats.min) },
-        { label: "Alerts", value: `${abnormalSoundEvents.length}` },
-        { label: "Peak", value: formatMetricValue("sound", soundStats.max) },
-      ],
-    },
-  ];
 
+
+  const renderCard = (key) => {
+    switch (key) {
+      case "pm25":
+        return (
+          <PM25Card
+            pm25={latestEntry.pm25 || 0}
+            aqi={latestEntry.pm25_aqi || 0}
+            isDarkMode={isDarkMode}
+            onHide={() => handleHideCard("pm25")}
+          />
+        );
+      case "pm10":
+        return (
+          <PM10Card
+            pm10={latestEntry.pm10 || 0}
+            aqi={latestEntry.pm10_aqi || 0}
+            isDarkMode={isDarkMode}
+            onHide={() => handleHideCard("pm10")}
+          />
+        );
+      case "co2":
+        return (
+          <Co2OverviewCard
+            co2={latestEntry.co2 || 0}
+            isDarkMode={isDarkMode}
+            onHide={() => handleHideCard("co2")}
+          />
+        );
+      case "tempHumidity":
+        return (
+          <TemperatureHumidityOverviewCard
+            temperature={latestEntry.temperature}
+            humidity={latestEntry.humidity}
+            temperatureStatus={temperatureStatus}
+            humidityStatus={humidityStatus}
+            isDarkMode={isDarkMode}
+            onHide={() => handleHideCard("tempHumidity")}
+          />
+        );
+      case "light":
+        return (
+          <LightOverviewCard
+            lux={latestEntry.lux}
+            bb={latestEntry.bb}
+            fr={latestEntry.fr}
+            status={lightStatus}
+            onHide={() => handleHideCard("light")}
+          />
+        );
+      case "uv":
+        return (
+          <UvOverviewCard
+            uva={latestEntry.uva}
+            uvb={latestEntry.uvb}
+            uvi={latestEntry.uvi}
+            status={uvStatus}
+            onHide={() => handleHideCard("uv")}
+          />
+        );
+      case "sound":
+        return (
+          <SoundOverviewCard
+            sound={latestEntry.sound}
+            status={soundStatus}
+            values={soundBars}
+            isDarkMode={isDarkMode}
+            onHide={() => handleHideCard("sound")}
+          />
+        );
+      case "spectral":
+        return (
+          <SpectralOverviewCard
+            f1={latestEntry.f1} f2={latestEntry.f2} f3={latestEntry.f3} f4={latestEntry.f4}
+            f5={latestEntry.f5} f6={latestEntry.f6} f7={latestEntry.f7} f8={latestEntry.f8}
+            clear={latestEntry.clear} nir={latestEntry.nir} flicker={latestEntry.flicker}
+            onHide={() => handleHideCard("spectral")}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const hiddenCards = cardOrder.filter((key) => !visibleCards.includes(key));
 
   return (
     <section className="relative overflow-hidden">
@@ -1845,81 +2024,128 @@ export const EnvironmentSensorDashboard = ({
             <DeviceHeader selectedDevice={selectedDevice} />
           </div>
 
-          <div className="mt-6 grid gap-3 sm:mt-8 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <PM25Card
-              pm25={latestEntry.pm25 || 0}
-              aqi={latestEntry.pm25_aqi || 0}
-              history={pm25HistoryData}
-              isDarkMode={isDarkMode}
-            />
-            <PM10Card
-              pm10={latestEntry.pm10 || 0}
-              aqi={latestEntry.pm10_aqi || 0}
-              history={pm10HistoryData}
-              isDarkMode={isDarkMode}
-            />
-            <Co2OverviewCard
-              co2={latestEntry.co2 || 0}
-              isDarkMode={isDarkMode}
-            />
-            <TemperatureHumidityOverviewCard
-              temperature={latestEntry.temperature}
-              humidity={latestEntry.humidity}
-              temperatureStatus={temperatureStatus}
-              humidityStatus={humidityStatus}
-              isDarkMode={isDarkMode}
-            />
-            <LightOverviewCard
-              lux={latestEntry.lux}
-              bb={latestEntry.bb}
-              fr={latestEntry.fr}
-              status={lightStatus}
-            />
-            <UvOverviewCard
-              uva={latestEntry.uva}
-              uvb={latestEntry.uvb}
-              uvi={latestEntry.uvi}
-              status={uvStatus}
-            />
-            <SoundOverviewCard
-              sound={latestEntry.sound}
-              status={soundStatus}
-              values={soundBars}
-              isDarkMode={isDarkMode}
-            />
-            <SpectralOverviewCard
-              f1={latestEntry.f1} f2={latestEntry.f2} f3={latestEntry.f3} f4={latestEntry.f4}
-              f5={latestEntry.f5} f6={latestEntry.f6} f7={latestEntry.f7} f8={latestEntry.f8}
-              clear={latestEntry.clear} nir={latestEntry.nir} flicker={latestEntry.flicker}
-            />
+          <div className="mt-6 grid gap-3 sm:mt-8 sm:gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {cardOrder
+              .filter((key) => visibleCards.includes(key))
+              .map((key) => (
+                <div
+                  key={key}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, key)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, key)}
+                  className={cn(
+                    "transition-all duration-300 cursor-grab active:cursor-grabbing hover:shadow-md",
+                    draggedCardKey === key && "opacity-40 scale-95"
+                  )}
+                >
+                  {renderCard(key)}
+                </div>
+              ))}
+
+            {hiddenCards.length > 0 && (
+              <div
+                className={cn(
+                  "relative flex min-h-[330px] transition-all duration-300 select-none shadow-sm",
+                  isAddDropdownOpen
+                    ? "flex-col justify-between rounded-lg border border-border bg-card p-4"
+                    : "items-center justify-center rounded-lg border-2 border-dashed border-border/70 bg-card/45 p-6 hover:bg-card/70 hover:border-primary/50 cursor-pointer group"
+                )}
+              >
+                {isAddDropdownOpen ? (
+                  <div className="flex flex-col h-full justify-between flex-1">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/60 pb-2 mb-3">
+                        Thêm thẻ thông số
+                      </p>
+                      <div className="max-h-[190px] overflow-y-auto space-y-1.5 pr-1">
+                        {hiddenCards.map((k) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => handleShowCard(k)}
+                            className="w-full text-left rounded-md px-3 py-2 text-sm bg-muted/40 hover:bg-primary hover:text-primary-foreground transition-all cursor-pointer font-medium"
+                          >
+                            {ALL_CARDS[k].title}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddDropdownOpen(false)}
+                      className="mt-4 w-full py-2 rounded-md border border-border/70 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+                    >
+                      Hủy bỏ
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddDropdownOpen(true)}
+                    className="flex flex-col items-center justify-center gap-2 cursor-pointer w-full h-full text-muted-foreground group-hover:text-foreground transition-colors"
+                  >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card shadow-sm group-hover:scale-110 transition-transform duration-300">
+                      <Plus className="h-6 w-6" />
+                    </div>
+                    <span className="text-sm font-semibold uppercase tracking-wider">Thêm thông số</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="mt-6 flex flex-col gap-4 lg:mt-8">
             <section className="min-w-0 rounded-lg border border-border/60 bg-card p-4 shadow-sm sm:p-5 lg:p-6">
               <div className="flex flex-col gap-2">
-                <div className="grid grid-cols-1 items-center gap-3 sm:grid-cols-2">
-                  <h2 className="text-2xl font-semibold tracking-[-0.04em] text-foreground">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-4">
+                  <h2 className="text-2xl font-semibold tracking-[-0.04em] text-foreground shrink-0">
                     {tabDefinition.title}
                   </h2>
 
-                  <div className="-mx-1 overflow-x-auto px-1 pb-1 sm:justify-self-end">
-                    <div className="flex min-w-max flex-nowrap justify-start gap-2 sm:justify-end">
-                      {Object.entries(TAB_CONFIG).map(([key, tab]) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => setSelectedTab(key)}
-                          className={cn(
-                            "shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-all sm:px-4",
-                            selectedTab === key
-                              ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                              : "border border-border/50 bg-background/70 text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                          )}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="relative lg:justify-self-end shrink-0 select-none">
+                    <button
+                      type="button"
+                      onClick={() => setIsChartTabDropdownOpen((prev) => !prev)}
+                      className="flex items-center justify-between gap-3 min-w-[200px] px-4 py-2.5 rounded-lg border border-border/70 bg-card/90 hover:bg-card hover:border-primary/50 text-sm font-medium text-foreground transition-all shadow-sm cursor-pointer"
+                    >
+                      <span>{tabDefinition.label}</span>
+                      <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", isChartTabDropdownOpen && "rotate-180")} />
+                    </button>
+
+                    {isChartTabDropdownOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40 cursor-default"
+                          onClick={() => setIsChartTabDropdownOpen(false)}
+                        />
+                        <div className="absolute right-0 top-full mt-1.5 z-50 w-full min-w-[200px] rounded-lg border border-border bg-card dark:bg-slate-900 p-1.5 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200 backdrop-blur-md">
+                          <div className="space-y-1">
+                            {Object.entries(TAB_CONFIG).map(([key, tab]) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTab(key);
+                                  setIsChartTabDropdownOpen(false);
+                                }}
+                                className={cn(
+                                  "w-full text-left rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer flex items-center justify-between",
+                                  selectedTab === key
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                )}
+                              >
+                                <span>{tab.label}</span>
+                                {selectedTab === key && (
+                                  <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 

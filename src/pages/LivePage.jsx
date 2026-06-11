@@ -7,7 +7,7 @@ import { LiveSection } from "@/components/sections/LiveSection";
 
 export const LivePage = () => {
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden flex flex-col relative">
+    <div className="min-h-screen bg-background text-foreground overflow-x-clip flex flex-col relative">
 
       {/* Navbar */}
       <div className="relative">

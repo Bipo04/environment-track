@@ -140,12 +140,14 @@ export const LegacyDeviceSidebar = ({ className = "" }) => {
         )}
       >
         {/* Header */}
-        <div className="px-4 py-4 border-b border-border/50 shrink-0">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <h2 className="text-sm font-bold text-foreground">Danh Sách Thiết Bị</h2>
-          </div>
-          <div className="flex items-center justify-center">
-            <p className="text-xs text-muted-foreground">{devices.length} thiết bị đã đăng ký</p>
+        <div className="py-4 border-b border-border shrink-0">
+          <div className="px-4">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <h2 className="text-sm font-bold text-foreground">Danh Sách Thiết Bị</h2>
+            </div>
+            <div className="flex items-center justify-center">
+              <p className="text-xs text-muted-foreground">{devices.length} thiết bị đã đăng ký</p>
+            </div>
           </div>
         </div>
 
@@ -179,15 +181,17 @@ export const LegacyDeviceSidebar = ({ className = "" }) => {
         </div>
 
         {/* Register button */}
-        <div className="px-3 py-4 border-t border-border/50 shrink-0">
-          <button
-            id="btn-register-device"
-            onClick={() => setShowModal(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-lg shadow-primary/20"
-          >
-            <span className="text-base font-bold">＋</span>
-            Đăng ký thiết bị
-          </button>
+        <div className="py-4 border-t border-border shrink-0">
+          <div className="px-3">
+            <button
+              id="btn-register-device"
+              onClick={() => setShowModal(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-lg shadow-primary/20"
+            >
+              <span className="text-base font-bold">＋</span>
+              Đăng ký thiết bị
+            </button>
+          </div>
         </div>
       </div>
 
@@ -363,14 +367,16 @@ export const DeviceSidebar = ({
           className
         )}
       >
-        <div className="px-4 py-4 border-b border-border/50 shrink-0">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <h2 className="text-sm font-bold text-foreground">Danh Sách Thiết Bị</h2>
-          </div>
-          <div className="flex items-center justify-center">
-            <p className="text-xs text-muted-foreground">
-              {devices.length ? `${devices.length} thiết bị đã đăng ký` : "Chưa đăng ký thiết bị nào"}
-            </p>
+        <div className="py-4 border-b border-border shrink-0">
+          <div className="px-4">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <h2 className="text-sm font-bold text-foreground">Danh Sách Thiết Bị</h2>
+            </div>
+            <div className="flex items-center justify-center">
+              <p className="text-xs text-muted-foreground">
+                {devices.length ? `${devices.length} thiết bị đã đăng ký` : "Chưa đăng ký thiết bị nào"}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -438,15 +444,17 @@ export const DeviceSidebar = ({
           )}
         </div>
 
-        <div className="px-3 py-4 border-t border-border/50 shrink-0">
-          <button
-            id="btn-register-device"
-            onClick={() => setShowModal(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-lg shadow-primary/20"
-          >
-            <span className="text-base font-bold">＋</span>
-            Đăng ký thiết bị
-          </button>
+        <div className="py-4 border-t border-border shrink-0">
+          <div className="px-3">
+            <button
+              id="btn-register-device"
+              onClick={() => setShowModal(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-lg shadow-primary/20"
+            >
+              <span className="text-base font-bold">＋</span>
+              Đăng ký thiết bị
+            </button>
+          </div>
         </div>
       </div>
 

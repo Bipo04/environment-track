@@ -64,19 +64,21 @@ export const DashboardPage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+    <div className="min-h-screen bg-background text-foreground overflow-x-clip">
       {/* Fixed navbar – doesn't occupy flow space, so we compensate with pt-16 below */}
       <Navbar />
 
       {/* pt-16 = 64px to push content below the fixed navbar */}
       <div className="px-2 pb-4 pt-18 sm:px-4 sm:pb-6 sm:pt-20 lg:px-6">
         <div className="mx-auto w-full max-w-[1700px] rounded-lg border border-border/50 bg-card/80 shadow-2xl backdrop-blur-sm">
-          <div className="flex min-h-[calc(100vh-7rem)] overflow-hidden rounded-lg">
-            <aside className="hidden lg:block border-r border-border/50 bg-card/70">
-              <DeviceSidebar {...sidebarProps} />
+          <div className="flex min-h-[calc(100vh-7rem)] rounded-lg">
+            <aside className="hidden lg:block border-r border-border/50 bg-card/70 rounded-l-lg w-64 shrink-0">
+              <div className="sticky top-[80px] h-[calc(100vh-120px)] z-10">
+                <DeviceSidebar className="border-none bg-transparent backdrop-blur-none h-full rounded-l-lg" {...sidebarProps} />
+              </div>
             </aside>
 
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 rounded-r-lg overflow-hidden">
               <DashboardSection
                 devices={devices}
                 selectedDevice={selectedDevice}
