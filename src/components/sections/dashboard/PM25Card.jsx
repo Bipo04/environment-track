@@ -12,7 +12,7 @@ const getAqiInfo = (aqi) => {
       bg: "bg-green-500/10",
       border: "border-green-500/20",
       emoji: "🟢",
-      description: "Không khí trong lành, rất an toàn cho mọi người.",
+      description: "Không khí phòng sạch, an toàn.",
     };
   }
   if (aqi <= 100) {
@@ -22,7 +22,7 @@ const getAqiInfo = (aqi) => {
       bg: "bg-yellow-500/10",
       border: "border-yellow-500/20",
       emoji: "🟡",
-      description: "Chất lượng chấp nhận được. Người cực nhạy cảm nên hạn chế vận động mạnh ngoài trời.",
+      description: "Không khí bình thường, ổn định.",
     };
   }
   if (aqi <= 150) {
@@ -32,7 +32,7 @@ const getAqiInfo = (aqi) => {
       bg: "bg-orange-500/10",
       border: "border-orange-500/20",
       emoji: "🟠",
-      description: "Nhóm người nhạy cảm (trẻ em, người già, người hen suyễn) có thể gặp triệu chứng khó thở.",
+      description: "Chất lượng kém, nên bật máy lọc khí.",
     };
   }
   if (aqi <= 200) {
@@ -42,7 +42,7 @@ const getAqiInfo = (aqi) => {
       bg: "bg-red-500/10",
       border: "border-red-500/20",
       emoji: "🔴",
-      description: "Người bình thường bắt đầu có triệu chứng mệt mỏi. Người nhạy cảm nên ở trong nhà.",
+      description: "Không khí xấu, cần lọc khí & thông gió.",
     };
   }
   if (aqi <= 300) {
@@ -52,7 +52,7 @@ const getAqiInfo = (aqi) => {
       bg: "bg-purple-500/10",
       border: "border-purple-500/20",
       emoji: "🟣",
-      description: "Cảnh báo khẩn cấp toàn bộ dân cư. Hạn chế tối đa các hoạt động ngoài trời.",
+      description: "Ô nhiễm nặng, bật lọc khí tối đa.",
     };
   }
   return {
@@ -61,7 +61,7 @@ const getAqiInfo = (aqi) => {
     bg: "bg-red-950/20",
     border: "border-red-950/40",
     emoji: "🆘",
-    description: "Nguy cơ ảnh hưởng nghiêm trọng đến tính mạng. Toàn bộ dân cư nên ở trong nhà.",
+    description: "Mức nguy hại, cần đóng cửa & xử lý ngay.",
   };
 };
 
@@ -77,7 +77,7 @@ export const PM25Card = ({ pm25 = 0, aqi = 0, isDarkMode = false, onHide }) => {
       bodyClassName="flex flex-1 flex-col"
       onHide={onHide}
     >
-      <div className="flex flex-col items-center justify-center pt-2">
+      <div className="flex flex-col items-center justify-center">
         <RingGauge
           valueText={`${aqi}`}
           label="Chỉ số AQI"
@@ -91,9 +91,9 @@ export const PM25Card = ({ pm25 = 0, aqi = 0, isDarkMode = false, onHide }) => {
         />
       </div>
 
-      <div className="mt-4 border-t border-border/60 pt-4 text-center dark:border-slate-800/90">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Nồng độ bụi mịn</p>
-        <p className="mt-1 text-base font-semibold text-foreground">
+      <div className="mt-2 border-t border-border/60 pt-2.5 text-center dark:border-slate-800/90">
+        <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Nồng độ bụi mịn</p>
+        <p className="mt-0.5 text-sm font-semibold text-foreground">
           {pm25.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">µg/m³</span>
         </p>
       </div>

@@ -4,8 +4,6 @@ import {
   clamp,
   withAlpha,
   getProgressRatio,
-  calculateDewPoint,
-  getDewPointStatus,
   formatNumber,
   formatMetricValue,
 } from "./EnvironmentSensorDashboard";
@@ -18,20 +16,30 @@ export const OverviewSurface = ({
   variant = "default",
   bodyClassName = "",
   onHide,
+  dimmed = false,
 }) => {
   const isPanel = variant === "panel";
 
   return (
     <article
       className={cn(
-        "flex h-full min-h-0 flex-col text-foreground shadow-sm sm:min-h-[330px]",
+        "flex h-full min-h-0 flex-col text-foreground shadow-sm sm:min-h-[280px] transition-all duration-300 relative overflow-hidden",
         isPanel
-          ? "relative overflow-hidden rounded-lg border border-border/70 bg-card/90 px-4 py-4 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.3)] sm:px-5 sm:py-5 lg:px-6 lg:py-6 dark:border-slate-800/90 dark:bg-slate-900/80 dark:shadow-[0_30px_70px_-48px_rgba(15,23,42,0.92)]"
-          : "rounded-lg border border-border/70 bg-card/90 p-4 sm:p-5 dark:border-slate-800/90 dark:bg-slate-900/80",
+          ? "border border-border/70 bg-card/90 px-3 py-3 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.3)] sm:px-4 sm:py-4 lg:px-5 lg:py-5 dark:border-slate-800/90 dark:bg-slate-900/80 dark:shadow-[0_30px_70px_-48px_rgba(15,23,42,0.92)]"
+          : "border border-border/70 bg-card/90 p-4 sm:p-5 dark:border-slate-800/90 dark:bg-slate-900/80",
       )}
     >
+      {/* 1. Global Dimming Overlay (z-30) - Covers the ENTIRE card area */}
+      {dimmed && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/60 backdrop-blur-[0.5px] dark:bg-slate-950/60">
+          <span className="rounded-md bg-black/90 dark:bg-slate-950/95 px-4 py-2 text-[12px] font-extrabold uppercase tracking-widest text-red-500 border border-red-500/50 shadow-2xl animate-pulse">
+            Mất kết nối
+          </span>
+        </div>
+      )}
+
       {isPanel ? (
-        <div className="relative flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-muted-foreground dark:text-slate-400 w-full">
+        <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-muted-foreground dark:text-slate-400 w-full mb-2.5 sm:mb-3">
           <span>{title}</span>
           {onHide && (
             <button
@@ -40,7 +48,7 @@ export const OverviewSurface = ({
                 e.stopPropagation();
                 onHide();
               }}
-              className="rounded-full p-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="rounded-full p-1 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer relative z-50 pointer-events-auto"
               title="Ẩn thẻ"
             >
               <Minus className="h-3.5 w-3.5" />
@@ -48,13 +56,21 @@ export const OverviewSurface = ({
           )}
         </div>
       ) : (
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2.5 sm:mb-3">
           <span>{title}</span>
         </div>
       )}
 
-      <div className={cn("mt-4 flex flex-1 flex-col sm:mt-5", isPanel && "relative", bodyClassName)}>
-        {children}
+      {/* 3. Body Content Area */}
+      <div 
+        className={cn(
+          "flex flex-1 flex-col transition-all duration-300",
+          dimmed && "opacity-40 grayscale-[60%] dark:opacity-30 pointer-events-none select-none"
+        )}
+      >
+        <div className={cn("flex flex-1 flex-col", bodyClassName)}>
+          {children}
+        </div>
       </div>
     </article>
   );
@@ -78,8 +94,8 @@ export const RingGauge = ({
 
   return (
     <div className="flex flex-col items-center text-center">
-      <p className="mb-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-      <div className="relative h-[86px] w-[120px]">
+      <p className="mb-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <div className="relative h-[72px] w-[104px]">
         <svg viewBox="0 0 120 80" className="h-full w-full" aria-hidden="true">
           <path
             d="M18 62 A42 42 0 0 1 102 62"
@@ -101,13 +117,13 @@ export const RingGauge = ({
             style={{ filter: `drop-shadow(0 0 6px ${withAlpha(accent, 0.3)})` }}
           />
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center pt-8">
-          <p className="text-[1.2rem] font-semibold leading-none tracking-[-0.03em]" style={{ color: accent }}>
+        <div className="absolute inset-0 flex items-center justify-center pt-6">
+          <p className="text-[1.05rem] font-semibold leading-none tracking-[-0.03em]" style={{ color: accent }}>
             {valueText}
           </p>
         </div>
       </div>
-      <div className="mt-1.5 flex w-full items-center justify-between px-1 text-[11px] text-muted-foreground">
+      <div className="mt-1 flex w-full items-center justify-between px-1 text-[10px] text-muted-foreground">
         <span>{minLabel}</span>
         <span>{maxLabel}</span>
       </div>
@@ -178,27 +194,28 @@ export const MetricBarRow = ({
 
 export const SoundBars = ({ value, accent, isDarkMode, count = 10 }) => {
   const totalBars = Math.max(8, Math.min(12, count));
-  const level = clamp(value / 4095, 0, 1);
+  const level = clamp(value / 2000, 0, 1);
   const activeBars = Math.max(2, Math.round(level * totalBars));
 
   return (
-    <div className="flex h-[92px] items-end justify-center gap-2">
+    <div className="flex h-[60px] items-end justify-center gap-2">
       {Array.from({ length: totalBars }).map((_, index) => {
-        const height = 18 + ((index + 1) / totalBars) * 52;
+        const height = 12 + ((index + 1) / totalBars) * 36;
         const intensity = 0.28 + (index / Math.max(totalBars - 1, 1)) * 0.72;
         const isActive = index < activeBars;
 
         return (
           <span
             key={`sound-bar-${index}`}
-            className="w-2.5 rounded-none"
+            className={cn(
+              "w-2.5 rounded-none",
+              !isActive && "bg-slate-200/90 dark:bg-slate-800"
+            )}
             style={{
               height: `${height}px`,
               background: isActive
                 ? `linear-gradient(180deg, ${withAlpha(accent, Math.min(0.45 + intensity * 0.45, 0.92))}, ${withAlpha(accent, Math.min(0.62 + intensity * 0.38, 1))})`
-                : isDarkMode
-                  ? "linear-gradient(180deg, rgba(59,72,101,0.82), rgba(31,41,55,0.96))"
-                  : "linear-gradient(180deg, rgba(112,129,168,0.45), rgba(66,87,126,0.72))",
+                : undefined,
               boxShadow: isActive ? `0 0 14px ${withAlpha(accent, intensity * 0.12)}` : "none",
               opacity: isActive ? 1 : 0.88,
             }}
@@ -219,17 +236,17 @@ export const StatusBanner = ({
 }) => (
   <div
     className={cn(
-      "flex h-[95px] flex-col overflow-hidden pt-3",
+      "flex h-[72px] flex-col overflow-hidden pt-2",
       withDivider && "border-t border-border/60 dark:border-slate-800/90",
       className
     )}
   >
     <div className="flex items-start gap-2.5">
       <div className="min-h-0 flex-1">
-        <p className="text-sm font-semibold" style={{ color: accent }}>
+        <p className="text-xs font-semibold" style={{ color: accent }}>
           {label}
         </p>
-        <p className="mt-1 max-h-[72px] overflow-hidden text-sm leading-6 text-muted-foreground dark:text-slate-400">
+        <p className="mt-0.5 max-h-[48px] overflow-hidden text-xs leading-5 text-muted-foreground dark:text-slate-400">
           {note}
         </p>
       </div>
@@ -260,10 +277,8 @@ export const TemperatureHumidityOverviewCard = ({
   humidityStatus,
   isDarkMode,
   onHide,
+  dimmed = false,
 }) => {
-  const dewPoint = calculateDewPoint(temperature, humidity);
-  const dewPointStatus = getDewPointStatus(dewPoint);
-
   return (
     <OverviewSurface
       icon={Thermometer}
@@ -272,8 +287,9 @@ export const TemperatureHumidityOverviewCard = ({
       variant="panel"
       bodyClassName="flex flex-1 flex-col"
       onHide={onHide}
+      dimmed={dimmed}
     >
-      <div className="grid grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 my-auto">
         <RingGauge
           valueText={`${formatNumber(temperature, 1)}°C`}
           label="Nhiệt độ"
@@ -298,36 +314,21 @@ export const TemperatureHumidityOverviewCard = ({
         />
       </div>
 
-      <div className="flex flex-col items-center py-4 text-center">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground dark:text-slate-400">
-          Điểm sương
-        </p>
-        <p
-          className="mt-1.5 text-[1.2rem] font-semibold leading-none tracking-[-0.03em]"
-          style={{ color: dewPointStatus.accent }}
-        >
-          {dewPoint !== null ? `${formatNumber(dewPoint, 1)}°C` : "—"}
-        </p>
-        <p className="mt-1 text-xs font-medium" style={{ color: dewPointStatus.accent }}>
-          {dewPointStatus.label}
-        </p>
-      </div>
-
-      <div className="mt-auto h-[118px] border-t border-border/60 dark:border-slate-800/90">
-        <div className="grid h-full grid-cols-2 gap-3 sm:gap-4">
+      <div className="mt-auto h-[88px] border-t border-border/60 dark:border-slate-800/90">
+        <div className="grid h-full grid-cols-2 gap-2 sm:gap-3">
           <StatusBanner
             accent={temperatureStatus.accent}
             label={temperatureStatus.label}
             note={temperatureStatus.note}
             icon={Thermometer}
-            className="h-full pt-4"
+            className="h-full pt-2"
           />
           <StatusBanner
             accent={humidityStatus.accent}
             label={humidityStatus.label}
             note={humidityStatus.note}
             icon={Droplets}
-            className="h-full pt-4"
+            className="h-full pt-2"
           />
         </div>
       </div>
@@ -335,7 +336,7 @@ export const TemperatureHumidityOverviewCard = ({
   );
 };
 
-export const LightOverviewCard = ({ lux, bb, fr, status, onHide }) => (
+export const LightOverviewCard = ({ lux, bb, fr, status, onHide, dimmed = false }) => (
   <OverviewSurface
     icon={SunMedium}
     title="Cường độ ánh sáng"
@@ -343,6 +344,7 @@ export const LightOverviewCard = ({ lux, bb, fr, status, onHide }) => (
     variant="panel"
     bodyClassName="flex flex-1 flex-col"
     onHide={onHide}
+    dimmed={dimmed}
   >
     <div className="space-y-5">
       <MetricBarRow
@@ -380,7 +382,7 @@ export const LightOverviewCard = ({ lux, bb, fr, status, onHide }) => (
   </OverviewSurface>
 );
 
-export const UvOverviewCard = ({ uva, uvb, uvi, status, onHide }) => (
+export const UvOverviewCard = ({ uva, uvb, uvi, status, onHide, dimmed = false }) => (
   <OverviewSurface
     icon={Sparkles}
     title="Cảm biến UV"
@@ -388,22 +390,23 @@ export const UvOverviewCard = ({ uva, uvb, uvi, status, onHide }) => (
     variant="panel"
     bodyClassName="flex flex-1 flex-col"
     onHide={onHide}
+    dimmed={dimmed}
   >
     <div className="space-y-5">
       <MetricBarRow
         label="UVA"
-        value={formatNumber(uva, 2)}
+        value={formatNumber(uva, 0)}
         suffix=""
         accent="#9333ea"
-        ratio={clamp(uva / 20, 0, 1)}
+        ratio={getProgressRatio("uva", uva)}
         variant="panel"
       />
       <MetricBarRow
         label="UVB"
-        value={formatNumber(uvb, 2)}
+        value={formatNumber(uvb, 0)}
         suffix=""
         accent="#a78bfa"
-        ratio={clamp(uvb / 20, 0, 1)}
+        ratio={getProgressRatio("uvb", uvb)}
         variant="panel"
       />
       <MetricBarRow
@@ -425,7 +428,7 @@ export const UvOverviewCard = ({ uva, uvb, uvi, status, onHide }) => (
   </OverviewSurface>
 );
 
-export const SoundOverviewCard = ({ sound, status, values, isDarkMode, onHide }) => (
+export const SoundOverviewCard = ({ sound, status, values, isDarkMode, onHide, dimmed = false }) => (
   <OverviewSurface
     icon={Volume2}
     title="Âm thanh"
@@ -433,13 +436,14 @@ export const SoundOverviewCard = ({ sound, status, values, isDarkMode, onHide })
     variant="panel"
     bodyClassName="flex flex-1 flex-col"
     onHide={onHide}
+    dimmed={dimmed}
   >
-    <div className="flex flex-1 flex-col items-center text-center">
-      <p className="text-[3.3rem] font-semibold leading-none tracking-[-0.06em] text-cyan-400">
+    <div className="flex flex-1 flex-col items-center justify-center text-center my-auto">
+      <p className="text-[2.6rem] font-semibold leading-none tracking-[-0.06em] text-cyan-400">
         {formatNumber(sound, 0)}
       </p>
-      <p className="mt-2 text-sm uppercase tracking-[0.24em] text-muted-foreground dark:text-slate-400">dBA</p>
-      <div className="mt-6 w-full">
+      <p className="mt-1 text-sm uppercase tracking-[0.24em] text-muted-foreground dark:text-slate-400">RMS</p>
+      <div className="mt-3 w-full">
         <SoundBars
           value={sound}
           accent="#22d3ee"
@@ -459,12 +463,12 @@ export const SoundOverviewCard = ({ sound, status, values, isDarkMode, onHide })
   </OverviewSurface>
 );
 
-export const Co2OverviewCard = ({ co2, isDarkMode, onHide }) => {
+export const Co2OverviewCard = ({ co2, scd4xTemperature, scd4xHumidity, isDarkMode, onHide, dimmed = false }) => {
   const getCo2Status = (value) => {
-    if (value <= 600) return { label: "Rất tốt", note: "Không khí rất trong lành, CO₂ ở mức lý tưởng.", accent: "#22c55e" };
-    if (value <= 1000) return { label: "Bình thường", note: "Chất lượng không khí tốt, mức CO₂ chấp nhận được.", accent: "#34d399" };
-    if (value <= 1500) return { label: "Cần thông gió", note: "Không khí bắt đầu bí, nên mở cửa thông gió.", accent: "#f59e0b" };
-    return { label: "Ngột ngạt", note: "Mức CO₂ nguy hại! Hãy mở cửa sổ ngay lập tức.", accent: "#ef4444" };
+    if (value <= 600) return { label: "Rất tốt", note: "Không khí phòng rất trong lành, mức CO₂ lý tưởng.", accent: "#22c55e" };
+    if (value <= 1000) return { label: "Bình thường", note: "Chất lượng không khí phòng ổn định, an toàn.", accent: "#34d399" };
+    if (value <= 1500) return { label: "Cần thông gió", note: "Phòng hơi bí khí, nên mở cửa hoặc thông gió.", accent: "#f59e0b" };
+    return { label: "Ngột ngạt", note: "Mức CO₂ phòng quá cao, cần thông gió khẩn cấp.", accent: "#ef4444" };
   };
 
   const status = getCo2Status(co2);
@@ -482,44 +486,59 @@ export const Co2OverviewCard = ({ co2, isDarkMode, onHide }) => {
       variant="panel"
       bodyClassName="flex flex-1 flex-col"
       onHide={onHide}
+      dimmed={dimmed}
     >
       <div className="flex flex-col items-center text-center">
-        <p className="mb-2 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Nồng độ CO₂</p>
-        <div className="relative h-[86px] w-[120px]">
-          <svg viewBox="0 0 120 80" className="h-full w-full" aria-hidden="true">
-            <path
-              d="M18 62 A42 42 0 0 1 102 62"
-              fill="none"
-              stroke={trackColor}
-              strokeWidth="10"
-              strokeLinecap="butt"
-              pathLength="100"
-              strokeDasharray={`${arcLength} 100`}
-            />
-            <path
-              d="M18 62 A42 42 0 0 1 102 62"
-              fill="none"
-              stroke={status.accent}
-              strokeWidth="10"
-              strokeLinecap="butt"
-              pathLength="100"
-              strokeDasharray={`${dashValue} 100`}
-              style={{ filter: `drop-shadow(0 0 6px ${withAlpha(status.accent, 0.3)})` }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center pt-8">
-            <p className="text-[1.2rem] font-semibold leading-none tracking-[-0.03em]" style={{ color: status.accent }}>
-              {formatNumber(co2, 0)}
-            </p>
+        <div className="w-[130px] flex flex-col items-center">
+          <p className="mb-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Nồng độ CO₂</p>
+          <div className="relative h-[72px] w-[104px]">
+            <svg viewBox="0 0 120 80" className="h-full w-full" aria-hidden="true">
+              <path
+                d="M18 62 A42 42 0 0 1 102 62"
+                fill="none"
+                stroke={trackColor}
+                strokeWidth="10"
+                strokeLinecap="butt"
+                pathLength="100"
+                strokeDasharray={`${arcLength} 100`}
+              />
+              <path
+                d="M18 62 A42 42 0 0 1 102 62"
+                fill="none"
+                stroke={status.accent}
+                strokeWidth="10"
+                strokeLinecap="butt"
+                pathLength="100"
+                strokeDasharray={`${dashValue} 100`}
+                style={{ filter: `drop-shadow(0 0 6px ${withAlpha(status.accent, 0.3)})` }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center pt-6">
+              <p className="text-[1.05rem] font-semibold leading-none tracking-[-0.03em]" style={{ color: status.accent }}>
+                {formatNumber(co2, 0)}
+              </p>
+            </div>
+          </div>
+          <div className="mt-1 grid grid-cols-3 w-full px-1 text-[10px] text-muted-foreground">
+            <span className="text-left">0</span>
+            <span className="text-center">ppm</span>
+            <span className="text-right">2000</span>
           </div>
         </div>
-        <div className="mt-1.5 flex w-full items-center justify-between px-1 text-[11px] text-muted-foreground">
-          <span>0</span>
-          <span>ppm</span>
-          <span>2000</span>
-        </div>
-        <p className="mt-1 text-xs font-medium" style={{ color: status.accent }}>{status.label}</p>
       </div>
+
+      {Number.isFinite(scd4xTemperature) && Number.isFinite(scd4xHumidity) && (
+        <div className="mt-2 flex w-full justify-around border-t border-border/40 pt-2 text-xs">
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Nhiệt độ</span>
+            <span className="font-semibold text-foreground mt-0.5">{formatNumber(scd4xTemperature, 1)}°C</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Độ ẩm</span>
+            <span className="font-semibold text-foreground mt-0.5">{formatNumber(scd4xHumidity, 0)}%</span>
+          </div>
+        </div>
+      )}
 
       <StatusBanner
         accent={status.accent}
@@ -545,17 +564,18 @@ const SPECTRAL_CHANNELS = [
   { key: "f8", label: "680nm", color: "#dc2626", name: "Đỏ" },
 ];
 
-export const SpectralOverviewCard = ({ f1, f2, f3, f4, f5, f6, f7, f8, clear, nir, flicker, onHide }) => {
+export const SpectralOverviewCard = ({ f1, f2, f3, f4, f5, f6, f7, f8, clear, nir, flicker, onHide, dimmed = false }) => {
   const values = { f1, f2, f3, f4, f5, f6, f7, f8 };
 
   return (
     <OverviewSurface
       icon={Sparkles}
-      title="Quang phổ AS7341"
+      title="Quang phổ"
       accent="#8b5cf6"
       variant="panel"
       bodyClassName="flex flex-1 flex-col"
       onHide={onHide}
+      dimmed={dimmed}
     >
       {/* Kênh phổ dưới dạng lưới hiển thị giá trị trực tiếp */}
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 py-1">

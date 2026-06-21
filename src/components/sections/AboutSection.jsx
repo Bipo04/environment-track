@@ -1,4 +1,4 @@
-import { Briefcase, Code, User } from "lucide-react";
+import { Activity, BarChart3, ShieldAlert } from "lucide-react";
 
 export const AboutSection = () => {
   return (
@@ -6,40 +6,28 @@ export const AboutSection = () => {
       {" "}
       <div className="container mx-auto max-w-5xl">
         <h2 className="text-3xl md:text-4xl font-bold mb-12 text-center">
-          About <span className="text-primary"> Me</span>
+          Giới thiệu <span className="text-primary"> Dự án</span>
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-          <div className="space-y-6">
-            <h3 className="text-2xl font-semibold">
-              Passionate Web Developer & Tech Creator
+          <div className="space-y-6 text-left">
+            <h3 className="text-2xl font-semibold text-primary">
+              Hệ thống Giám sát Môi trường
             </h3>
 
-            <p className="text-muted-foreground">
-              With over 5 years of experience in web development, I specialize
-              in creating responsive, accessible, and performant web
-              applications using modern technologies.
+            <p className="text-muted-foreground leading-relaxed">
+              Đây là giải pháp công nghệ tiên tiến nhằm giám sát, thu thập và phân tích dữ liệu môi trường sống theo thời gian thực. Hệ thống hỗ trợ đo đạc các chỉ số quan trọng như nồng độ bụi mịn PM2.5, PM10, khí CO2, nhiệt độ, độ ẩm, cường độ ánh sáng, tia cực tím UV và mức độ tiếng ồn xung quanh chúng ta.
             </p>
 
-            <p className="text-muted-foreground">
-              I'm passionate about creating elegant solutions to complex
-              problems, and I'm constantly learning new technologies and
-              techniques to stay at the forefront of the ever-evolving web
-              landscape.
+            <p className="text-muted-foreground leading-relaxed">
+              Dự án hướng đến mục tiêu nâng cao nhận thức cộng đồng về chất lượng môi trường không khí, cung cấp các phân tích dữ liệu trực quan bằng đồ thị và phát cảnh báo kịp thời khi các chỉ số vượt quá ngưỡng an toàn cho sức khỏe.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 pt-4 justify-center">
-              <a href="#contact" className="cosmic-button">
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <a href="#contact" className="cosmic-button text-center">
                 {" "}
-                Get In Touch
+                Liên hệ ngay
               </a>
-
-              {/* <a
-                href=""
-                className="px-6 py-2 rounded-full border border-primary text-primary hover:bg-primary/10 transition-colors duration-300"
-              >
-                Download CV
-              </a> */}
             </div>
           </div>
 
@@ -47,13 +35,12 @@ export const AboutSection = () => {
             <div className="gradient-border p-6 card-hover">
               <div className="flex items-start gap-4">
                 <div className="p-3 rounded-full bg-primary/10">
-                  <Code className="h-6 w-6 text-primary" />
+                  <Activity className="h-6 w-6 text-primary" />
                 </div>
                 <div className="text-left">
-                  <h4 className="font-semibold text-lg"> Web Development</h4>
-                  <p className="text-muted-foreground">
-                    Creating responsive websites and web applications with
-                    modern frameworks.
+                  <h4 className="font-semibold text-lg"> Giám sát thời gian thực</h4>
+                  <p className="text-muted-foreground text-sm mt-1">
+                    Thu thập dữ liệu liên tục từ các cảm biến IoT để cập nhật trạng thái chất lượng không khí và môi trường xung quanh nhanh chóng, chính xác.
                   </p>
                 </div>
               </div>
@@ -61,35 +48,34 @@ export const AboutSection = () => {
             <div className="gradient-border p-6 card-hover">
               <div className="flex items-start gap-4">
                 <div className="p-3 rounded-full bg-primary/10">
-                  <User className="h-6 w-6 text-primary" />
+                  <BarChart3 className="h-6 w-6 text-primary" />
                 </div>
                 <div className="text-left">
-                  <h4 className="font-semibold text-lg">UI/UX Design</h4>
-                  <p className="text-muted-foreground">
-                    Designing intuitive user interfaces and seamless user
-                    experiences.
+                  <h4 className="font-semibold text-lg">Phân tích & Trực quan hóa</h4>
+                  <p className="text-muted-foreground text-sm mt-1">
+                    Biểu diễn các chỉ số dưới dạng biểu đồ trực quan, giúp dễ dàng theo dõi xu hướng biến động của môi trường theo thời gian.
                   </p>
                 </div>
               </div>
             </div>
-            <div className="gradient-border p-6 card-hover">
+            {/* <div className="gradient-border p-6 card-hover">
               <div className="flex items-start gap-4">
                 <div className="p-3 rounded-full bg-primary/10">
-                  <Briefcase className="h-6 w-6 text-primary" />
+                  <ShieldAlert className="h-6 w-6 text-primary" />
                 </div>
 
                 <div className="text-left">
-                  <h4 className="font-semibold text-lg">Project Management</h4>
-                  <p className="text-muted-foreground">
-                    Leading projects from conception to completion with agile
-                    methodologies.
+                  <h4 className="font-semibold text-lg">Cảnh báo thông minh</h4>
+                  <p className="text-muted-foreground text-sm mt-1">
+                    Hệ thống tự động phát hiện và gửi cảnh báo tức thời khi các chỉ số ô nhiễm (bụi mịn, khí độc) vượt quá ngưỡng an toàn.
                   </p>
                 </div>
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
     </section>
   );
 };
+

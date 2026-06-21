@@ -10,15 +10,16 @@ export const Footer = () => {
       {" "}
       <p className="text-sm text-muted-foreground">
         {" "}
-        &copy; {new Date().getFullYear()} Pedrotech.co. All rights reserved.
+        &copy; {new Date().getFullYear()} Pedrotech.co. Bảo lưu mọi quyền.
       </p>
       <button
         onClick={scrollToTop}
-        className="p-2 rounded-full bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
-        aria-label="Scroll to top"
+        className="p-2 rounded-full bg-primary/10 hover:bg-primary/20 text-primary transition-colors cursor-pointer"
+        aria-label="Cuộn lên đầu trang"
       >
         <ArrowUp size={20} />
       </button>
     </footer>
   );
 };
+

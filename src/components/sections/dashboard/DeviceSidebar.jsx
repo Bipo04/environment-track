@@ -4,7 +4,7 @@ import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DEVICE_TYPES = [
-  'Cảm biến môi trường'
+  'Hệ thống giám sát môi trường'
 ];
 
 // ─── Registration Modal ────────────────────────────────────────────────
@@ -207,7 +207,7 @@ export const LegacyDeviceSidebar = ({ className = "" }) => {
 };
 
 const MODERN_DEVICE_TYPES = [
-  "Cảm biến môi trường",
+  "Hệ thống giám sát môi trường",
 ];
 
 const RegisterDeviceModal = ({ devices, onClose, onConfirm }) => {

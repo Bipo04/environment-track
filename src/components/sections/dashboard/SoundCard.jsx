@@ -5,8 +5,8 @@ const DB_LEVELS = [
   { max: 300, label: 'Yên tĩnh', color: '#22c55e', emoji: '🔇' },
   { max: 700, label: 'Bình thường', color: '#22c55e', emoji: '📚' },
   { max: 1200, label: 'Ồn', color: '#f97316', emoji: '💼' },
-  { max: 2000, label: 'Cảnh báo', color: '#ef4444', emoji: '🏗️' },
-  { max: 4095, label: 'Rất ồn', color: '#a855f7', emoji: '📢' },
+  { max: 1600, label: 'Cảnh báo', color: '#ef4444', emoji: '🏗️' },
+  { max: 2000, label: 'Rất ồn', color: '#a855f7', emoji: '📢' },
 ];
 
 const getDbInfo = (db) => DB_LEVELS.find(l => db <= l.max) || DB_LEVELS[DB_LEVELS.length - 1];
@@ -19,7 +19,7 @@ const EqualizerBars = ({ db }) => {
   const targetRef = useRef(bars);
 
   useEffect(() => {
-    const intensity = Math.min(db / 4095, 1);
+    const intensity = Math.min(db / 2000, 1);
     const animate = () => {
       targetRef.current = targetRef.current.map((v, i) => {
         const noise = (Math.random() - 0.5) * 0.3;
@@ -60,8 +60,8 @@ const EqualizerBars = ({ db }) => {
 
 // dB scale with indicator
 const DBScale = ({ db }) => {
-  const clampValue = Math.min(Math.max(db, 0), 4095);
-  const pct = (clampValue / 4095) * 100;
+  const clampValue = Math.min(Math.max(db, 0), 2000);
+  const pct = (clampValue / 2000) * 100;
   return (
     <div className="relative">
       <div className="h-3 rounded-full overflow-hidden"
@@ -114,7 +114,7 @@ export const SoundCard = ({ sound = 800 }) => {
       {/* Main dB value */}
       <div className="text-center">
         <p className="text-4xl font-extrabold" style={{ color: info.color }}>
-          {sound.toFixed(0)} <span className="text-xl font-bold">dBA</span>
+          {sound.toFixed(0)} <span className="text-xl font-bold">RMS</span>
         </p>
         <div
           className="inline-flex items-center gap-1.5 mt-1.5 px-3 py-1 rounded-full text-xs font-semibold"
@@ -136,11 +136,11 @@ export const SoundCard = ({ sound = 800 }) => {
       <div className="grid grid-cols-2 gap-2">
         <div className="text-center px-2 py-1.5 rounded-xl bg-background/60 border border-border/40">
           <p className="text-[10px] text-muted-foreground">Đỉnh điểm</p>
-          <p className="text-sm font-bold text-red-400">{peak.toFixed(0)} dBa</p>
+          <p className="text-sm font-bold text-red-400">{peak.toFixed(0)} RMS</p>
         </div>
         <div className="text-center px-2 py-1.5 rounded-xl bg-background/60 border border-border/40">
           <p className="text-[10px] text-muted-foreground">TB 1 giờ</p>
-          <p className="text-sm font-bold text-blue-400">{avg1h.toFixed(0)} dBa</p>
+          <p className="text-sm font-bold text-blue-400">{avg1h.toFixed(0)} RMS</p>
         </div>
       </div>
 

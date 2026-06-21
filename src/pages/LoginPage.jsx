@@ -2,7 +2,7 @@ import './LoginPage.css';
 import logo from "@/assets/image.png";
 import bg from "@/assets/bg.png";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { authService } from "@/services/authService";
 
 export const LoginPage = () => {
@@ -61,10 +61,9 @@ export const LoginPage = () => {
     setIsLoading(true);
     try {
       const data = await authService.login(email, password);
-      alert('Đăng nhập thành công!');
       console.log('Login response:', data);
-      // Redirect to dashboard page
-      navigate('/');
+      // Redirect to homepage page with state to show toast
+      navigate('/', { state: { loginSuccess: true } });
     } catch (error) {
       alert(error.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
     } finally {
@@ -86,6 +85,25 @@ export const LoginPage = () => {
 
   return (
     <div className="login-page" style={{ backgroundImage: `url(${bg})` }}>
+      {/* Navbar quay về trang chủ */}
+      <nav className="absolute top-0 left-0 w-full bg-white border-b border-gray-200 py-4 z-10">
+        <div className="container">
+          <div className="flex items-center gap-4">
+            <Link to="/" className="flex items-center">
+              <img 
+                src={logo} 
+                alt="Logo" 
+                className="h-10 w-25 object-contain hover:opacity-80 transition-opacity"
+              />
+            </Link>
+            <div className="h-6 w-px bg-gray-300" />
+            <span className="text-lg md:text-xl font-semibold text-gray-800">
+              Đăng nhập
+            </span>
+          </div>
+        </div>
+      </nav>
+
       <div className="login-card">
         <img
           alt="HUST Logo"

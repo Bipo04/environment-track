@@ -1,6 +1,6 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3333";
+import { apiUrl } from "./apiConfig";
 
-const buildHistorySearchParams = ({ page = 1, limit = 20, type, deviceId, periodType, metricCode, metricTypeId, from, to } = {}) => {
+const buildHistorySearchParams = ({ page = 1, limit = 20, type, deviceId, periodType, metricCode, metricTypeId, from, to, exact } = {}) => {
   const searchParams = new URLSearchParams({
     page: String(page),
     limit: String(limit),
@@ -13,6 +13,7 @@ const buildHistorySearchParams = ({ page = 1, limit = 20, type, deviceId, period
   if (metricTypeId) searchParams.set("metricTypeId", String(metricTypeId));
   if (from) searchParams.set("from", from);
   if (to) searchParams.set("to", to);
+  if (exact) searchParams.set("exact", exact);
 
   return searchParams;
 };
@@ -28,7 +29,7 @@ const authHeaders = () => {
 };
 
 const requestJson = async (path, params) => {
-  const response = await fetch(`${API_BASE_URL}${path}?${buildHistorySearchParams(params)}`, {
+  const response = await fetch(`${apiUrl(path)}?${buildHistorySearchParams(params)}`, {
     method: "GET",
     headers: authHeaders(),
   });

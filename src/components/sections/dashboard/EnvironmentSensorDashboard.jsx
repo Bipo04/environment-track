@@ -167,14 +167,14 @@ export const TAB_CONFIG = {
         key: "uva",
         label: "UVA",
         color: "#d946ef",
-        unit: " uva",
+        unit: " µW/cm²",
         yAxisID: "y1",
       },
       {
         key: "uvb",
         label: "UVB",
         color: "#7c3aed",
-        unit: " uvb",
+        unit: " µW/cm²",
         yAxisID: "y1",
       },
     ],
@@ -213,7 +213,7 @@ export const TAB_CONFIG = {
   },
   spectral: {
     label: "Quang phổ",
-    title: "Biểu đồ quang phổ AS7341",
+    title: "Biểu đồ quang phổ",
     subtitle: "",
     datasets: [
       { key: "f1", label: "F1 Tím (415nm)", color: "#7c3aed", unit: "", yAxisID: "y" },
@@ -232,17 +232,30 @@ export const TAB_CONFIG = {
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 export const parseLooseNumber = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
   if (typeof value === "number") {
-    return Number.isFinite(value) ? value : 0;
+    return Number.isFinite(value) ? value : null;
   }
 
   if (typeof value === "string") {
     const normalized = value.trim().replace(",", ".");
     const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
-  return 0;
+  return null;
+};
+
+export const getLatestNonNull = (history, key, fallback = 0) => {
+  if (!history || !history.length) return fallback;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i] && history[i][key] !== null && history[i][key] !== undefined) {
+      return history[i][key];
+    }
+  }
+  return fallback;
 };
 
 export const withAlpha = (hex, alpha) => {
@@ -330,6 +343,8 @@ export const normalizeSnapshot = (snapshot) => ({
   pm10_aqi: parseLooseNumber(snapshot?.pm10_aqi),
   aqi: parseLooseNumber(snapshot?.aqi),
   co2: parseLooseNumber(snapshot?.co2),
+  scd4x_temperature: parseLooseNumber(snapshot?.scd4x_temperature ?? snapshot?.scd_temp),
+  scd4x_humidity: parseLooseNumber(snapshot?.scd4x_humidity ?? snapshot?.scd_hum),
   f1: parseLooseNumber(snapshot?.f1),
   f2: parseLooseNumber(snapshot?.f2),
   f3: parseLooseNumber(snapshot?.f3),
@@ -342,7 +357,9 @@ export const normalizeSnapshot = (snapshot) => ({
   nir: parseLooseNumber(snapshot?.nir),
   flicker: parseLooseNumber(snapshot?.flicker),
   timestamp: snapshot?.timestamp || "",
+  topic: snapshot?.topic || "",
 });
+
 
 export const buildSeedHistory = (baseSnapshot) => {
   const points = [];
@@ -390,8 +407,16 @@ export const buildSeedHistory = (baseSnapshot) => {
       20000
     );
     const uvi = clamp(solarWave * 8.6 + wave(index, 0.15, 2.1) * 0.7, 0, 11);
-    const uva = clamp(0.25 + uvi * 0.28 + wave(index, 0.21, 1.4) * 0.08, 0, 5);
-    const uvb = clamp(0.01 + uvi * 0.03 + wave(index, 0.26, 2.8) * 0.008, 0, 1);
+    const uva = clamp(
+      uvi * 400 + wave(index, 0.21, 1.4) * 120 + 20,
+      0,
+      5000
+    );
+    const uvb = clamp(
+      uvi * 100 + wave(index, 0.26, 2.8) * 30 + 5,
+      0,
+      1200
+    );
     const sound = clamp(
       base.sound * 0.6 +
         300 +
@@ -411,6 +436,16 @@ export const buildSeedHistory = (baseSnapshot) => {
       (base.pm10 || 32.4) + wave(index, 0.07, 2.5) * 14,
       8,
       140
+    );
+    const scd4x_temperature = clamp(
+      (base.scd4x_temperature || base.temperature || 25) + thermalWave * 3.5 + wave(index, 0.1, 0.4) * 1.5,
+      18,
+      40
+    );
+    const scd4x_humidity = clamp(
+      (base.scd4x_humidity || base.humidity || 60) - thermalWave * 10 + wave(index, 0.08, 1.6) * 6,
+      35,
+      92
     );
 
     // CO₂: dao động theo mô hình thông gió (thấp ban đêm, cao ban ngày khi có người)
@@ -452,6 +487,8 @@ export const buildSeedHistory = (baseSnapshot) => {
       pm25_aqi: calculatePm25Aqi(pm25),
       pm10_aqi: calculatePm10Aqi(pm10),
       co2: Math.round(co2),
+      scd4x_temperature: Number(scd4x_temperature.toFixed(1)),
+      scd4x_humidity: Math.round(scd4x_humidity),
       f1: Math.round(f1), f2: Math.round(f2), f3: Math.round(f3), f4: Math.round(f4),
       f5: Math.round(f5), f6: Math.round(f6), f7: Math.round(f7), f8: Math.round(f8),
       clear: Math.round(clear), nir: Math.round(nir), flicker: Number(flicker.toFixed(1)),
@@ -512,10 +549,14 @@ export const formatNumber = (value, digits = 0) =>
   });
 
 export const roundMetricValue = (key, value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
   const numericValue = Number(value) || 0;
 
   switch (key) {
     case "temperature":
+    case "scd4x_temperature":
     case "pm25":
     case "pm10":
     case "flicker":
@@ -523,6 +564,7 @@ export const roundMetricValue = (key, value) => {
     case "uvi":
       return Number(numericValue.toFixed(2));
     case "humidity":
+    case "scd4x_humidity":
     case "lux":
     case "bb":
     case "fr":
@@ -537,7 +579,7 @@ export const roundMetricValue = (key, value) => {
       return Math.round(numericValue);
     case "uva":
     case "uvb":
-      return Number(numericValue.toFixed(2));
+      return Math.round(numericValue);
     default:
       return numericValue;
   }
@@ -585,11 +627,11 @@ export const formatMetricValue = (key, value, compact = false) => {
     case "uvi":
       return `${formatNumber(numericValue, 2)} UVI`;
     case "uva":
-      return `${formatNumber(numericValue, 2)} uva`;
+      return `${formatNumber(numericValue, 0)} µW/cm²`;
     case "uvb":
-      return `${formatNumber(numericValue, 2)} uvb`;
+      return `${formatNumber(numericValue, 0)} µW/cm²`;
     case "sound":
-      return `${formatNumber(numericValue, 0)} dBA`;
+      return `${formatNumber(numericValue, 0)} RMS`;
     case "pm25":
       return `${formatNumber(numericValue, 1)} µg/m³`;
     case "pm10":
@@ -636,11 +678,11 @@ export const formatDelta = (key, value) => {
     case "uvi":
       return `${prefix}${formatNumber(absValue, 2)} UVI`;
     case "uva":
-      return `${prefix}${formatNumber(absValue, 2)} uva`;
+      return `${prefix}${formatNumber(absValue, 0)} µW/cm²`;
     case "uvb":
-      return `${prefix}${formatNumber(absValue, 2)} uvb`;
+      return `${prefix}${formatNumber(absValue, 0)} µW/cm²`;
     case "sound":
-      return `${prefix}${formatNumber(absValue, 0)} dBA`;
+      return `${prefix}${formatNumber(absValue, 0)} RMS`;
     default:
       return `${prefix}${formatNumber(absValue, 1)}`;
   }
@@ -687,14 +729,16 @@ const MIN_CHART_SPAN = {
   pm10_aqi: 50,
   temperature: 4,
   humidity: 15,
-  lux: 1000,
-  bb: 5000,
-  fr: 2500,
+  lux: 500,
+  bb: 500,
+  fr: 500,
   uvi: 2.0,
-  uva: 2,
-  uvb: 0.5,
+  uva: 100,
+  uvb: 100,
   sound: 600,
   co2: 150,
+  scd4x_temperature: 4,
+  scd4x_humidity: 15,
   f1: 150,
   f2: 150,
   f3: 150,
@@ -717,6 +761,8 @@ const MIN_CHART_LIMIT = {
   uvb: 0,
   sound: 0,
   co2: 0,
+  scd4x_temperature: -40,
+  scd4x_humidity: 0,
   f1: 0,
   f2: 0,
   f3: 0,
@@ -734,14 +780,16 @@ const MIN_CHART_LIMIT = {
 const MAX_CHART_LIMIT = {
   temperature: 60,
   humidity: 100,
-  lux: 40000,
-  bb: 65535,
-  fr: 65535,
-  uvi: 15,
-  uva: 65535,
-  uvb: 65535,
+  lux: 2000,
+  bb: 2000,
+  fr: 2000,
+  uvi: 11,
+  uva: 500,
+  uvb: 500,
   sound: 2000,
   co2: 5000,
+  scd4x_temperature: 60,
+  scd4x_humidity: 100,
   f1: 65535,
   f2: 65535,
   f3: 65535,
@@ -756,6 +804,110 @@ const MAX_CHART_LIMIT = {
   pm10_aqi: 500,
 };
 
+/** Map metric keys from history/other pages to live chart limit keys */
+export const METRIC_CHART_KEY_ALIASES = {
+  broadband: "bb",
+  infrared: "fr",
+  UVI: "uvi",
+  UVA: "uva",
+  UVB: "uvb",
+  aqi: "pm25_aqi",
+  pm1: "pm25",
+  clear: "f1",
+  nir: "f1",
+};
+
+export const resolveMetricChartKey = (metricKey) =>
+  METRIC_CHART_KEY_ALIASES[metricKey] || metricKey;
+
+const getChartSpan = (metricKey) => {
+  const chartKey = resolveMetricChartKey(metricKey);
+  return MIN_CHART_SPAN[chartKey] ?? MIN_CHART_SPAN[metricKey] ?? 1;
+};
+
+const getChartMinLimit = (metricKey) => {
+  const chartKey = resolveMetricChartKey(metricKey);
+  if (MIN_CHART_LIMIT[chartKey] !== undefined) return MIN_CHART_LIMIT[chartKey];
+  if (MIN_CHART_LIMIT[metricKey] !== undefined) return MIN_CHART_LIMIT[metricKey];
+  return 0;
+};
+
+const getChartMaxLimit = (metricKey) => {
+  const chartKey = resolveMetricChartKey(metricKey);
+  if (MAX_CHART_LIMIT[chartKey] !== undefined) return MAX_CHART_LIMIT[chartKey];
+  if (MAX_CHART_LIMIT[metricKey] !== undefined) return MAX_CHART_LIMIT[metricKey];
+  return 100000;
+};
+
+const finalizeChartBounds = (metricKeys, validValues, calculatedMin, calculatedMax) => {
+  const minValue = Math.min(...validValues);
+  let minLimit = Math.min(...metricKeys.map(getChartMinLimit));
+  const maxLimit = Math.max(...metricKeys.map(getChartMaxLimit));
+
+  // Không kéo trục xuống âm khi toàn bộ dữ liệu đang dương (trừ nhiệt độ thực sự < 0).
+  if (minValue >= 0) {
+    minLimit = Math.max(0, minLimit);
+  }
+
+  return {
+    min: Math.max(minLimit, calculatedMin),
+    max: Math.min(maxLimit, calculatedMax),
+  };
+};
+
+export const getZoomLimitsForMetrics = (metricKeys = []) => {
+  if (!metricKeys.length) {
+    return { min: undefined, max: undefined };
+  }
+
+  return {
+    min: Math.min(...metricKeys.map(getChartMinLimit)),
+    max: Math.max(...metricKeys.map(getChartMaxLimit)),
+  };
+};
+
+export const getMetricBounds = (metricKey, values = []) => {
+  const validValues = values.filter((value) => Number.isFinite(value));
+  if (!validValues.length) {
+    return { min: undefined, max: undefined };
+  }
+
+  const minValue = Math.min(...validValues);
+  const maxValue = Math.max(...validValues);
+  const dataSpan = maxValue - minValue;
+  const finalSpan = Math.max(dataSpan, getChartSpan(metricKey));
+  const midpoint = (minValue + maxValue) / 2;
+  const padding = finalSpan * 0.15;
+
+  const calculatedMin = midpoint - finalSpan / 2 - padding;
+  const calculatedMax = midpoint + finalSpan / 2 + padding;
+
+  return finalizeChartBounds([metricKey], validValues, calculatedMin, calculatedMax);
+};
+
+export const getCombinedMetricBounds = (metricKeys = [], values = []) => {
+  if (!metricKeys.length) {
+    return { min: undefined, max: undefined };
+  }
+
+  const validValues = values.filter((value) => Number.isFinite(value));
+  if (!validValues.length) {
+    return { min: undefined, max: undefined };
+  }
+
+  const minValue = Math.min(...validValues);
+  const maxValue = Math.max(...validValues);
+  const dataSpan = maxValue - minValue;
+  const finalSpan = Math.max(dataSpan, ...metricKeys.map(getChartSpan));
+  const midpoint = (minValue + maxValue) / 2;
+  const padding = finalSpan * 0.15;
+
+  const calculatedMin = midpoint - finalSpan / 2 - padding;
+  const calculatedMax = midpoint + finalSpan / 2 + padding;
+
+  return finalizeChartBounds(metricKeys, validValues, calculatedMin, calculatedMax);
+};
+
 export const getAxisBounds = (entries, datasets, axisId) => {
   const axisDatasets = datasets.filter((dataset) => dataset.yAxisID === axisId);
   if (!axisDatasets.length) {
@@ -767,24 +919,10 @@ export const getAxisBounds = (entries, datasets, axisId) => {
     return {};
   }
 
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
-  const dataSpan = maxValue - minValue;
-  const minSpan = Math.max(...axisDatasets.map((dataset) => MIN_CHART_SPAN[dataset.key] || 1));
-  const finalSpan = Math.max(dataSpan, minSpan);
-  const midpoint = (minValue + maxValue) / 2;
-  const padding = finalSpan * 0.15; // 15% padding for breathing room
-
-  const calculatedMin = midpoint - finalSpan / 2 - padding;
-  const calculatedMax = midpoint + finalSpan / 2 + padding;
-
-  const minLimit = Math.min(...axisDatasets.map((dataset) => MIN_CHART_LIMIT[dataset.key] !== undefined ? MIN_CHART_LIMIT[dataset.key] : 0));
-  const maxLimit = Math.max(...axisDatasets.map((dataset) => MAX_CHART_LIMIT[dataset.key] !== undefined ? MAX_CHART_LIMIT[dataset.key] : 100000));
-
-  return {
-    min: Math.max(minLimit, calculatedMin),
-    max: Math.min(maxLimit, calculatedMax),
-  };
+  return getCombinedMetricBounds(
+    axisDatasets.map((dataset) => dataset.key),
+    values
+  );
 };
 
 
@@ -793,56 +931,54 @@ export const getTrend = (entries, key, fallbackValue = 0) => {
     return 0;
   }
 
-  const baselineIndex = Math.max(0, entries.length - Math.min(6, entries.length));
-  const baseline = entries[baselineIndex][key] ?? fallbackValue;
+  const baseline = entries[entries.length - 2][key] ?? fallbackValue;
   const current = entries[entries.length - 1][key] ?? fallbackValue;
 
-  const delta = current - baseline;
-  return Math.abs(delta) < getTrendDeadzone(key) ? 0 : delta;
+  return current - baseline;
 };
 
 export const getStatusStyles = (type, value, humidity = 0) => {
   if (type === "temperature") {
     if (value <= 10) {
-      return { label: "Rất lạnh", note: "Trời rét buốt. Chú ý giữ ấm cơ thể.", accent: "#3b82f6" };
+      return { label: "Rất lạnh", note: "Nhiệt độ phòng rất thấp. Cần giữ ấm.", accent: "#3b82f6" };
     }
     if (value <= 18) {
-      return { label: "Lạnh", note: "Nhiệt độ xuống thấp, không khí lạnh rõ.", accent: "#60a5fa" };
+      return { label: "Lạnh", note: "Nhiệt độ phòng thấp, nên tăng sưởi.", accent: "#60a5fa" };
     }
     if (value <= 24) {
-      return { label: "Mát mẻ", note: "Mát mẻ dễ chịu. Thời tiết lý tưởng.", accent: "#0d9488" };
+      return { label: "Mát mẻ", note: "Nhiệt độ phòng mát mẻ, dễ chịu.", accent: "#0d9488" };
     }
     if (value <= 27) {
       return {
         label: "Ổn định",
-        note: "Thời tiết dễ chịu, không khí thoáng mát.",
+        note: "Nhiệt độ phòng lý tưởng, thoải mái.",
         accent: "#22c55e",
       };
     }
     if (value <= 30) {
       return {
         label: "Hơi nóng",
-        note: "Không khí hơi ngột ngạt, bắt đầu oi bức.",
+        note: "Không khí phòng hơi ấm và bí.",
         accent: "#f5b84b",
       };
     }
     if (value <= 35) {
       return {
         label: "Nóng",
-        note: "Trời oi nóng. Chú ý uống đủ nước.",
+        note: "Phòng khá nóng, nên bật quạt/điều hòa.",
         accent: "#f97316",
       };
     }
     if (value <= 40) {
       return {
         label: "Rất nóng",
-        note: "Nắng nóng gay gắt. Hạn chế ra ngoài.",
+        note: "Phòng nóng bức gay gắt, cần làm mát phòng.",
         accent: "#ef4444",
       };
     }
     return {
       label: "Cực nóng",
-      note: "Nhiệt độ quá tải! Kiểm tra thiết bị ngay.",
+      note: "Phòng quá nóng! Cần hạ nhiệt ngay.",
       accent: "#a855f7",
     };
   }
@@ -851,27 +987,27 @@ export const getStatusStyles = (type, value, humidity = 0) => {
     if (value <= 50) {
       return {
         label: "Rất tối",
-        note: "Ánh sáng rất thấp.",
+        note: "Phòng thiếu sáng, nên bật thêm đèn.",
         accent: "#ef4444",
       };
     }
     if (value <= 200) {
       return {
         label: "Thiếu sáng",
-        note: "Cường độ ánh sáng thấp.",
+        note: "Ánh sáng phòng hơi yếu cho học tập/làm việc.",
         accent: "#f97316",
       };
     }
     if (value <= 1000) {
       return {
         label: "Đủ sáng",
-        note: "Ánh sáng phù hợp.",
+        note: "Ánh sáng phòng phù hợp cho sinh hoạt.",
         accent: "#22c55e",
       };
     }
     return {
       label: "Quá sáng",
-      note: "Ánh sáng quá mạnh.",
+      note: "Ánh sáng trong phòng quá mạnh.",
       accent: "#eab308",
     };
   }
@@ -880,65 +1016,65 @@ export const getStatusStyles = (type, value, humidity = 0) => {
     if (value <= 2) {
       return {
         label: "UV thấp",
-        note: "Mức UV an toàn.",
+        note: "Mức UV trong phòng ở mức an toàn.",
         accent: "#22c55e",
       };
     }
     if (value <= 5) {
       return {
         label: "UV trung bình",
-        note: "Mức UV trung bình.",
+        note: "Nắng hắt vào phòng, nên kéo rèm.",
         accent: "#eab308",
       };
     }
     if (value <= 7) {
       return {
         label: "UV cao",
-        note: "Mức UV cao.",
+        note: "Mức UV phòng cao, nên che chắn cửa sổ.",
         accent: "#f97316",
       };
     }
     if (value <= 10) {
       return {
         label: "UV rất cao",
-        note: "Mức UV rất cao.",
+        note: "Bức xạ UV phòng rất mạnh.",
         accent: "#ef4444",
       };
     }
     return {
       label: "UV cực đoan",
-      note: "Mức UV nguy hiểm.",
+      note: "Bức xạ UV phòng nguy hại.",
       accent: "#a855f7",
     };
   }
 
   if (value <= 300) {
-    return { label: "Yên tĩnh", note: "Âm thanh ở mức thấp.", accent: "#22c55e" };
+    return { label: "Yên tĩnh", note: "Không gian phòng rất yên tĩnh.", accent: "#22c55e" };
   }
   if (value <= 700) {
     return {
       label: "Bình thường",
-      note: "Âm thanh ở mức bình thường.",
+      note: "Mức âm thanh sinh hoạt ổn định.",
       accent: "#22c55e",
     };
   }
   if (value <= 1200) {
     return {
       label: "Ồn",
-      note: "Mức âm thanh khá cao.",
+      note: "Tiếng ồn trong phòng khá lớn.",
       accent: "#f97316",
     };
   }
   if (value <= 2000) {
     return {
       label: "Cảnh báo",
-      note: "Âm thanh lớn.",
+      note: "Tiếng ồn trong phòng rất lớn.",
       accent: "#ef4444",
     };
   }
   return {
     label: "Rất ồn",
-    note: "Âm thanh ở mức rất cao.",
+    note: "Không gian phòng quá ồn ào.",
     accent: "#a855f7",
   };
 };
@@ -1011,27 +1147,27 @@ export const getHumidityStatus = (value) => {
   if (value <= 30) {
     return {
       label: "Khô",
-      note: "Không khí khô.",
+      note: "Không khí phòng khô, dễ gây kích ứng.",
       accent: "#f97316",
     };
   }
   if (value <= 60) {
     return {
       label: "Tốt",
-      note: "Độ ẩm phù hợp.",
+      note: "Độ ẩm phòng lý tưởng cho sức khỏe.",
       accent: "#22c55e",
     };
   }
   if (value <= 80) {
     return {
       label: "Ẩm",
-      note: "Không khí có độ ẩm cao.",
+      note: "Không khí phòng ẩm, dễ sinh nấm mốc.",
       accent: "#3b82f6",
     };
   }
   return {
     label: "Rất ẩm",
-    note: "Độ ẩm quá cao.",
+    note: "Độ ẩm phòng quá cao, nên hút ẩm.",
     accent: "#ef4444",
   };
 };
@@ -1090,19 +1226,19 @@ export const getProgressRatio = (key, value) => {
     case "humidity":
       return clamp(value / 100, 0, 1);
     case "lux":
-      return clamp(value / 5000, 0, 1);
+      return clamp(value / 1000, 0, 1);
     case "bb":
-      return clamp(value / 55000, 0, 1);
+      return clamp(value / 1500, 0, 1);
     case "fr":
-      return clamp(value / 20000, 0, 1);
+      return clamp(value / 1000, 0, 1);
     case "uva":
-      return clamp(value / 5, 0, 1);
+      return clamp(value / 500, 0, 1);
     case "uvb":
-      return clamp(value / 1, 0, 1);
+      return clamp(value / 500, 0, 1);
     case "uvi":
       return clamp(value / 11, 0, 1);
     case "sound":
-      return clamp(value / 4095, 0, 1);
+      return clamp(value / 2000, 0, 1);
     default:
       return clamp(value, 0, 1);
   }
@@ -1268,32 +1404,117 @@ export const DetailCard = ({
   </article>
 );
 
-export const MetricSummaryCard = ({ title, datasets, latestEntry, chartHistory, mode = "current" }) => (
-  <div className="min-w-[225px] rounded-lg border border-border/50 bg-card/40 px-3 py-[11px] dark:bg-slate-900/40 sm:min-w-[250px]">
-    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
-    <div className="mt-1.5 space-y-1.5">
-      {datasets.map((dataset) => (
-        <div
-          key={`${mode}-${dataset.key}`}
-          className="flex items-center justify-between gap-3 rounded border border-border/30 bg-background/25 px-2 py-1 dark:bg-slate-950/15"
-        >
-          <div className="flex items-center gap-1.5">
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: dataset.color }}
-            />
-            <span className="whitespace-nowrap text-[13px] font-medium text-foreground/80">{dataset.label}</span>
-          </div>
-          <span className="shrink-0 whitespace-nowrap pl-1 text-sm font-bold tracking-tight text-foreground">
-            {mode === "current"
-              ? formatMetricValue(dataset.key, latestEntry[dataset.key], dataset.key === "bb" || dataset.key === "fr")
-              : formatDelta(dataset.key, getTrend(chartHistory, dataset.key))}
-          </span>
-        </div>
-      ))}
+const renderTrendDelta = (key, value) => {
+  const absValue = Math.abs(value);
+  
+  let formattedText = "";
+  switch (key) {
+    case "temperature":
+      formattedText = `${formatNumber(absValue, 1)}`;
+      break;
+    case "humidity":
+      formattedText = `${formatNumber(absValue, 0)}`;
+      break;
+    case "lux":
+      formattedText = `${absValue >= 1000 ? formatCompact(absValue) : formatNumber(absValue, 0)}`;
+      break;
+    case "bb":
+      formattedText = `${absValue >= 1000 ? formatCompact(absValue) : formatNumber(absValue, 0)}`;
+      break;
+    case "fr":
+      formattedText = `${absValue >= 1000 ? formatCompact(absValue) : formatNumber(absValue, 0)}`;
+      break;
+    case "uvi":
+      formattedText = `${formatNumber(absValue, 2)}`;
+      break;
+    case "uva":
+    case "uvb":
+      formattedText = `${formatNumber(absValue, 0)}`;
+      break;
+    case "sound":
+      formattedText = `${formatNumber(absValue, 0)}`;
+      break;
+    case "co2":
+      formattedText = `${formatNumber(absValue, 0)}`;
+      break;
+    default:
+      formattedText = `${formatNumber(absValue, 1)}`;
+  }
+
+  if (value > 0) {
+    return (
+      <span className="inline-flex items-center justify-end min-w-[44px] gap-0.5 text-emerald-500 font-bold">
+        <span>↑</span>
+        <span>{formattedText}</span>
+      </span>
+    );
+  } else if (value < 0) {
+    return (
+      <span className="inline-flex items-center justify-end min-w-[44px] gap-0.5 text-red-500 font-bold">
+        <span>↓</span>
+        <span>{formattedText}</span>
+      </span>
+    );
+  } else {
+    return (
+      <span className="inline-flex items-center justify-end min-w-[44px] gap-0.5 text-muted-foreground font-medium">
+        <span>—</span>
+        <span>{formattedText}</span>
+      </span>
+    );
+  }
+};
+
+export const CombinedMetricSummaryCard = ({ datasets, latestEntry, chartHistory }) => {
+  const isLarge = datasets.length > 3;
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-border/50 bg-card/40 px-3.5 py-[11px] dark:bg-slate-900/40 transition-all",
+        isLarge ? "w-full md:w-[600px]" : "min-w-[280px] sm:min-w-[320px]"
+      )}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Hiện tại & Xu hướng</p>
+      <div
+        className={cn(
+          "mt-2",
+          isLarge ? "grid grid-cols-2 gap-x-4 gap-y-1.5" : "space-y-1.5"
+        )}
+      >
+        {datasets.map((dataset) => {
+          const rawValue = getLatestNonNull(chartHistory, dataset.key, null);
+          const trendValue = getTrend(chartHistory, dataset.key);
+
+          return (
+            <div
+              key={`combined-${dataset.key}`}
+              className="flex items-center justify-between gap-3 rounded border border-border/30 bg-background/25 px-2.5 py-1 dark:bg-slate-950/15"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: dataset.color }}
+                />
+                <span className="whitespace-nowrap text-[13px] font-medium text-foreground/80 truncate">
+                  {dataset.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 pl-1.5">
+                <span className="text-sm font-bold tracking-tight text-foreground">
+                  {formatMetricValue(dataset.key, rawValue, dataset.key === "bb" || dataset.key === "fr")}
+                </span>
+                <span className="text-xs shrink-0 pl-1">
+                  {renderTrendDelta(dataset.key, trendValue)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const EmptyDashboardState = ({ title, description, selectedDevice }) => (
   <div className="mt-6 lg:mt-8">
@@ -1388,11 +1609,12 @@ export const EnvironmentSensorDashboard = ({
   devices = [],
   selectedDevice = null,
   selectedDeviceSnapshot = null,
+  sensorActive = null,
 }) => {
   const currentSnapshot = normalizeSnapshot(selectedDeviceSnapshot ?? {});
 
   const [historyByDevice, setHistoryByDevice] = useState({});
-  const [selectedTab, setSelectedTab] = useState("pm25");
+  const [selectedTab, setSelectedTab] = useState("tempHumidity");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isChartTabDropdownOpen, setIsChartTabDropdownOpen] = useState(false);
   const lastSampleKey = useRef("");
@@ -1401,10 +1623,10 @@ export const EnvironmentSensorDashboard = ({
   const lastDeviceId = useRef("");
 
   const DEFAULT_ORDER = [
+    "tempHumidity",
     "pm25",
     "pm10",
     "co2",
-    "tempHumidity",
     "light",
     "uv",
     "sound",
@@ -1414,7 +1636,12 @@ export const EnvironmentSensorDashboard = ({
   const [cardOrder, setCardOrder] = useState(() => {
     try {
       const stored = localStorage.getItem("envirotrack.dashboard.cardOrder");
-      return stored ? JSON.parse(stored) : DEFAULT_ORDER;
+      let order = stored ? JSON.parse(stored) : DEFAULT_ORDER;
+      if (order.includes("tempHumidity") && order[0] !== "tempHumidity") {
+        order = ["tempHumidity", ...order.filter((x) => x !== "tempHumidity")];
+        localStorage.setItem("envirotrack.dashboard.cardOrder", JSON.stringify(order));
+      }
+      return order;
     } catch {
       return DEFAULT_ORDER;
     }
@@ -1429,12 +1656,30 @@ export const EnvironmentSensorDashboard = ({
     }
   });
 
+  const activeTabs = useMemo(
+    () =>
+      cardOrder
+        .filter((key) => visibleCards.includes(key))
+        .filter((key) => TAB_CONFIG[key] !== undefined),
+    [cardOrder, visibleCards]
+  );
+
+  useEffect(() => {
+    if (activeTabs.length > 0 && !activeTabs.includes(selectedTab)) {
+      setSelectedTab(activeTabs[0]);
+    }
+  }, [activeTabs, selectedTab]);
+
   const [isAddDropdownOpen, setIsAddDropdownOpen] = useState(false);
   const [draggedCardKey, setDraggedCardKey] = useState(null);
 
   const handleDragStart = (e, key) => {
     setDraggedCardKey(key);
     e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragEnd = () => {
+    setDraggedCardKey(null);
   };
 
   const handleDragOver = (e) => {
@@ -1549,7 +1794,8 @@ export const EnvironmentSensorDashboard = ({
     }
 
      const now = Date.now();
-     if (lastRecordedTime.current !== 0 && now - lastRecordedTime.current < 1000) {
+     const isDustTopic = currentSnapshot.topic && currentSnapshot.topic.startsWith("dust_v2");
+     if (!isDustTopic && lastRecordedTime.current !== 0 && now - lastRecordedTime.current < 1000) {
        return;
      }
 
@@ -1558,6 +1804,8 @@ export const EnvironmentSensorDashboard = ({
 
     setHistoryByDevice((previous) => {
       const previousHistory = previous[selectedDevice.id] || [];
+      const isDustTopic = currentSnapshot.topic && currentSnapshot.topic.startsWith("dust_v2");
+
       const nextEntry = {
         time: Date.now(),
         temperature: roundMetricValue("temperature", currentSnapshot.temperature),
@@ -1569,11 +1817,13 @@ export const EnvironmentSensorDashboard = ({
         uva: roundMetricValue("uva", currentSnapshot.uva),
         uvb: roundMetricValue("uvb", currentSnapshot.uvb),
         sound: roundMetricValue("sound", currentSnapshot.sound),
-        pm25: roundMetricValue("pm25", currentSnapshot.pm25),
-        pm10: roundMetricValue("pm10", currentSnapshot.pm10),
-        pm25_aqi: roundMetricValue("pm25_aqi", currentSnapshot.pm25_aqi),
-        pm10_aqi: roundMetricValue("pm10_aqi", currentSnapshot.pm10_aqi),
+        pm25: isDustTopic ? roundMetricValue("pm25", currentSnapshot.pm25) : null,
+        pm10: isDustTopic ? roundMetricValue("pm10", currentSnapshot.pm10) : null,
+        pm25_aqi: isDustTopic ? roundMetricValue("pm25_aqi", currentSnapshot.pm25_aqi) : null,
+        pm10_aqi: isDustTopic ? roundMetricValue("pm10_aqi", currentSnapshot.pm10_aqi) : null,
         co2: roundMetricValue("co2", currentSnapshot.co2),
+        scd4x_temperature: roundMetricValue("scd4x_temperature", currentSnapshot.scd4x_temperature),
+        scd4x_humidity: roundMetricValue("scd4x_humidity", currentSnapshot.scd4x_humidity),
         f1: roundMetricValue("f1", currentSnapshot.f1),
         f2: roundMetricValue("f2", currentSnapshot.f2),
         f3: roundMetricValue("f3", currentSnapshot.f3),
@@ -1612,9 +1862,12 @@ export const EnvironmentSensorDashboard = ({
     currentSnapshot?.pm25_aqi,
     currentSnapshot?.pm10_aqi,
     currentSnapshot?.co2,
+    currentSnapshot?.scd4x_temperature,
+    currentSnapshot?.scd4x_humidity,
     currentSnapshot?.f1,
     currentSnapshot?.f5,
     currentSnapshot?.timestamp,
+    currentSnapshot?.topic,
   ]);
 
   const history = selectedDevice ? historyByDevice[selectedDevice.id] || [] : [];
@@ -1637,6 +1890,8 @@ export const EnvironmentSensorDashboard = ({
           pm25_aqi: roundMetricValue("pm25_aqi", currentSnapshot.pm25_aqi),
           pm10_aqi: roundMetricValue("pm10_aqi", currentSnapshot.pm10_aqi),
           co2: roundMetricValue("co2", currentSnapshot.co2),
+          scd4x_temperature: roundMetricValue("scd4x_temperature", currentSnapshot.scd4x_temperature),
+          scd4x_humidity: roundMetricValue("scd4x_humidity", currentSnapshot.scd4x_humidity),
           f1: roundMetricValue("f1", currentSnapshot.f1),
           f2: roundMetricValue("f2", currentSnapshot.f2),
           f3: roundMetricValue("f3", currentSnapshot.f3),
@@ -1647,11 +1902,16 @@ export const EnvironmentSensorDashboard = ({
           f8: roundMetricValue("f8", currentSnapshot.f8),
           clear: roundMetricValue("clear", currentSnapshot.clear),
           nir: roundMetricValue("nir", currentSnapshot.nir),
-          flicker: roundMetricValue("flicker", currentSnapshot.flicker),
         },
       ];
-  const chartHistory = displayHistory.slice(-20);
-  const tabDefinition = TAB_CONFIG[selectedTab];
+  const tabDefinition = TAB_CONFIG[selectedTab] || TAB_CONFIG.tempHumidity;
+  const chartHistory = useMemo(() => {
+    const keys = tabDefinition.datasets.map((d) => d.key);
+    const filtered = displayHistory.filter((entry) =>
+      keys.some((key) => entry[key] !== null && entry[key] !== undefined)
+    );
+    return filtered.length ? filtered.slice(-20) : displayHistory.slice(-20);
+  }, [displayHistory, tabDefinition]);
 
   const chartHistoryRef = useRef(chartHistory);
   useEffect(() => {
@@ -1844,7 +2104,7 @@ export const EnvironmentSensorDashboard = ({
     ? "Đăng ký ít nhất một thiết bị ở thanh bên trái để bắt đầu theo dõi dữ liệu môi trường."
     : !selectedDevice
       ? "Chọn một thiết bị trong danh sách để xem dữ liệu của thiết bị đó."
-      : "Chọn một thiết bị cảm biến môi trường để hiển thị giao diện theo dõi.";
+      : "Chọn một thiết bị Hệ thống giám sát môi trường để hiển thị giao diện theo dõi.";
 
   if (!devices.length || !selectedDevice) {
     return (
@@ -1875,16 +2135,18 @@ export const EnvironmentSensorDashboard = ({
   }
 
   const latestEntry = displayHistory[displayHistory.length - 1];
+  const currentTemp = getLatestNonNull(displayHistory, "temperature", 25);
+  const currentHumid = getLatestNonNull(displayHistory, "humidity", 50);
   const temperatureStatus = getStatusStyles(
     "temperature",
-    latestEntry.temperature,
-    latestEntry.humidity
+    currentTemp,
+    currentHumid
   );
-  const humidityStatus = getHumidityStatus(latestEntry.humidity);
-  const lightStatus = getStatusStyles("light", latestEntry.lux);
-  const uvStatus = getStatusStyles("uv", latestEntry.uvi);
-  const soundStatus = getStatusStyles("sound", latestEntry.sound);
-  const soundBars = sampleHistory(displayHistory.slice(-18), 10).map((entry) => entry.sound);
+  const humidityStatus = getHumidityStatus(currentHumid);
+  const lightStatus = getStatusStyles("light", getLatestNonNull(displayHistory, "lux", 0));
+  const uvStatus = getStatusStyles("uv", getLatestNonNull(displayHistory, "uvi", 0));
+  const soundStatus = getStatusStyles("sound", getLatestNonNull(displayHistory, "sound", 0));
+  const soundBars = sampleHistory(displayHistory.slice(-18), 10).map((entry) => entry.sound ?? 0);
 
   const chartData = {
     labels: chartHistory.map((entry) => formatAxisTimestamp(entry.time, "24h")),
@@ -1892,6 +2154,7 @@ export const EnvironmentSensorDashboard = ({
       label: dataset.label,
       data: chartHistory.map((entry) => entry[dataset.key]),
       borderColor: dataset.color,
+      spanGaps: true,
       backgroundColor: (context) => {
         const { chart } = context;
         const { ctx, chartArea } = chart;
@@ -1930,8 +2193,8 @@ export const EnvironmentSensorDashboard = ({
       case "pm25":
         return (
           <PM25Card
-            pm25={latestEntry.pm25 || 0}
-            aqi={latestEntry.pm25_aqi || 0}
+            pm25={getLatestNonNull(displayHistory, "pm25", 0)}
+            aqi={getLatestNonNull(displayHistory, "pm25_aqi", 0)}
             isDarkMode={isDarkMode}
             onHide={() => handleHideCard("pm25")}
           />
@@ -1939,8 +2202,8 @@ export const EnvironmentSensorDashboard = ({
       case "pm10":
         return (
           <PM10Card
-            pm10={latestEntry.pm10 || 0}
-            aqi={latestEntry.pm10_aqi || 0}
+            pm10={getLatestNonNull(displayHistory, "pm10", 0)}
+            aqi={getLatestNonNull(displayHistory, "pm10_aqi", 0)}
             isDarkMode={isDarkMode}
             onHide={() => handleHideCard("pm10")}
           />
@@ -1948,59 +2211,75 @@ export const EnvironmentSensorDashboard = ({
       case "co2":
         return (
           <Co2OverviewCard
-            co2={latestEntry.co2 || 0}
+            co2={getLatestNonNull(displayHistory, "co2", 0)}
+            scd4xTemperature={getLatestNonNull(displayHistory, "scd4x_temperature", null)}
+            scd4xHumidity={getLatestNonNull(displayHistory, "scd4x_humidity", null)}
             isDarkMode={isDarkMode}
             onHide={() => handleHideCard("co2")}
+            dimmed={sensorActive && !sensorActive.scd4x}
           />
         );
       case "tempHumidity":
         return (
           <TemperatureHumidityOverviewCard
-            temperature={latestEntry.temperature}
-            humidity={latestEntry.humidity}
+            temperature={currentTemp}
+            humidity={currentHumid}
             temperatureStatus={temperatureStatus}
             humidityStatus={humidityStatus}
             isDarkMode={isDarkMode}
             onHide={() => handleHideCard("tempHumidity")}
+            dimmed={sensorActive && !sensorActive.aht30}
           />
         );
       case "light":
         return (
           <LightOverviewCard
-            lux={latestEntry.lux}
-            bb={latestEntry.bb}
-            fr={latestEntry.fr}
+            lux={getLatestNonNull(displayHistory, "lux", 0)}
+            bb={getLatestNonNull(displayHistory, "bb", 0)}
+            fr={getLatestNonNull(displayHistory, "fr", 0)}
             status={lightStatus}
             onHide={() => handleHideCard("light")}
+            dimmed={sensorActive && !sensorActive.tsl2561}
           />
         );
       case "uv":
         return (
           <UvOverviewCard
-            uva={latestEntry.uva}
-            uvb={latestEntry.uvb}
-            uvi={latestEntry.uvi}
+            uva={getLatestNonNull(displayHistory, "uva", 0)}
+            uvb={getLatestNonNull(displayHistory, "uvb", 0)}
+            uvi={getLatestNonNull(displayHistory, "uvi", 0)}
             status={uvStatus}
             onHide={() => handleHideCard("uv")}
+            dimmed={sensorActive && !sensorActive.veml6075}
           />
         );
       case "sound":
         return (
           <SoundOverviewCard
-            sound={latestEntry.sound}
+            sound={getLatestNonNull(displayHistory, "sound", 0)}
             status={soundStatus}
             values={soundBars}
             isDarkMode={isDarkMode}
             onHide={() => handleHideCard("sound")}
+            dimmed={sensorActive && !sensorActive.sound}
           />
         );
       case "spectral":
         return (
           <SpectralOverviewCard
-            f1={latestEntry.f1} f2={latestEntry.f2} f3={latestEntry.f3} f4={latestEntry.f4}
-            f5={latestEntry.f5} f6={latestEntry.f6} f7={latestEntry.f7} f8={latestEntry.f8}
-            clear={latestEntry.clear} nir={latestEntry.nir} flicker={latestEntry.flicker}
+            f1={getLatestNonNull(displayHistory, "f1", 0)}
+            f2={getLatestNonNull(displayHistory, "f2", 0)}
+            f3={getLatestNonNull(displayHistory, "f3", 0)}
+            f4={getLatestNonNull(displayHistory, "f4", 0)}
+            f5={getLatestNonNull(displayHistory, "f5", 0)}
+            f6={getLatestNonNull(displayHistory, "f6", 0)}
+            f7={getLatestNonNull(displayHistory, "f7", 0)}
+            f8={getLatestNonNull(displayHistory, "f8", 0)}
+            clear={getLatestNonNull(displayHistory, "clear", 0)}
+            nir={getLatestNonNull(displayHistory, "nir", 0)}
+            flicker={getLatestNonNull(displayHistory, "flicker", 0)}
             onHide={() => handleHideCard("spectral")}
+            dimmed={sensorActive && !sensorActive.as7341}
           />
         );
       default:
@@ -2032,6 +2311,7 @@ export const EnvironmentSensorDashboard = ({
                   key={key}
                   draggable
                   onDragStart={(e) => handleDragStart(e, key)}
+                  onDragEnd={handleDragEnd}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, key)}
                   className={cn(
@@ -2046,7 +2326,7 @@ export const EnvironmentSensorDashboard = ({
             {hiddenCards.length > 0 && (
               <div
                 className={cn(
-                  "relative flex min-h-[330px] transition-all duration-300 select-none shadow-sm",
+                  "relative flex min-h-[280px] transition-all duration-300 select-none shadow-sm",
                   isAddDropdownOpen
                     ? "flex-col justify-between rounded-lg border border-border bg-card p-4"
                     : "items-center justify-center rounded-lg border-2 border-dashed border-border/70 bg-card/45 p-6 hover:bg-card/70 hover:border-primary/50 cursor-pointer group"
@@ -2096,81 +2376,77 @@ export const EnvironmentSensorDashboard = ({
           </div>
 
           <div className="mt-6 flex flex-col gap-4 lg:mt-8">
-            <section className="min-w-0 rounded-lg border border-border/60 bg-card p-4 shadow-sm sm:p-5 lg:p-6">
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-4">
-                  <h2 className="text-2xl font-semibold tracking-[-0.04em] text-foreground shrink-0">
-                    {tabDefinition.title}
-                  </h2>
+            {activeTabs.length > 0 && (
+              <section className="min-w-0 rounded-lg border border-border/60 bg-card p-4 shadow-sm sm:p-5 lg:p-6">
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-4">
+                    <h2 className="text-2xl font-semibold tracking-[-0.04em] text-foreground shrink-0">
+                      {tabDefinition.title}
+                    </h2>
 
-                  <div className="relative lg:justify-self-end shrink-0 select-none">
-                    <button
-                      type="button"
-                      onClick={() => setIsChartTabDropdownOpen((prev) => !prev)}
-                      className="flex items-center justify-between gap-3 min-w-[200px] px-4 py-2.5 rounded-lg border border-border/70 bg-card/90 hover:bg-card hover:border-primary/50 text-sm font-medium text-foreground transition-all shadow-sm cursor-pointer"
-                    >
-                      <span>{tabDefinition.label}</span>
-                      <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", isChartTabDropdownOpen && "rotate-180")} />
-                    </button>
+                    <div className="relative lg:justify-self-end shrink-0 select-none">
+                      <button
+                        type="button"
+                        onClick={() => setIsChartTabDropdownOpen((prev) => !prev)}
+                        className="flex items-center justify-between gap-3 min-w-[200px] px-4 py-2.5 rounded-lg border border-border/70 bg-card/90 hover:bg-card hover:border-primary/50 text-sm font-medium text-foreground transition-all shadow-sm cursor-pointer"
+                      >
+                        <span>{tabDefinition.label}</span>
+                        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", isChartTabDropdownOpen && "rotate-180")} />
+                      </button>
 
-                    {isChartTabDropdownOpen && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-40 cursor-default"
-                          onClick={() => setIsChartTabDropdownOpen(false)}
-                        />
-                        <div className="absolute right-0 top-full mt-1.5 z-50 w-full min-w-[200px] rounded-lg border border-border bg-card dark:bg-slate-900 p-1.5 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200 backdrop-blur-md">
-                          <div className="space-y-1">
-                            {Object.entries(TAB_CONFIG).map(([key, tab]) => (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedTab(key);
-                                  setIsChartTabDropdownOpen(false);
-                                }}
-                                className={cn(
-                                  "w-full text-left rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer flex items-center justify-between",
-                                  selectedTab === key
-                                    ? "bg-primary text-primary-foreground"
-                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                )}
-                              >
-                                <span>{tab.label}</span>
-                                {selectedTab === key && (
-                                  <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
-                                )}
-                              </button>
-                            ))}
+                      {isChartTabDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-40 cursor-default"
+                            onClick={() => setIsChartTabDropdownOpen(false)}
+                          />
+                          <div className="absolute right-0 top-full mt-1.5 z-50 w-full min-w-[200px] rounded-lg border border-border bg-card dark:bg-slate-900 p-1.5 shadow-2xl animate-in fade-in slide-in-from-top-1 duration-200 backdrop-blur-md">
+                            <div className="space-y-1">
+                              {activeTabs.map((key) => {
+                                const tab = TAB_CONFIG[key];
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedTab(key);
+                                      setIsChartTabDropdownOpen(false);
+                                    }}
+                                    className={cn(
+                                      "w-full text-left rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer flex items-center justify-between",
+                                      selectedTab === key
+                                        ? "bg-primary text-primary-foreground"
+                                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    )}
+                                  >
+                                    <span>{tab.label}</span>
+                                    {selectedTab === key && (
+                                      <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      </>
-                    )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex w-fit flex-wrap gap-2">
+                    <CombinedMetricSummaryCard
+                      datasets={tabDefinition.datasets}
+                      latestEntry={latestEntry}
+                      chartHistory={chartHistory}
+                    />
+                  </div>
+
+                  <div className="h-[280px] overflow-hidden rounded-lg border border-border/60 bg-card/90 p-3 dark:bg-slate-900/80 sm:h-[340px] sm:p-4 lg:h-[430px]">
+                    <Line ref={chartRef} data={chartData} options={chartOptions} />
                   </div>
                 </div>
-
-                <div className="flex w-fit flex-wrap gap-2">
-                  <MetricSummaryCard
-                    title="Hiện tại"
-                    datasets={tabDefinition.datasets}
-                    latestEntry={latestEntry}
-                    chartHistory={chartHistory}
-                    mode="current"
-                  />
-                  <MetricSummaryCard
-                    title="Xu hướng"
-                    datasets={tabDefinition.datasets}
-                    latestEntry={latestEntry}
-                    chartHistory={chartHistory}
-                    mode="trend"
-                  />
-                </div>
-
-                <div className="h-[280px] overflow-hidden rounded-lg border border-border/60 bg-card/90 p-3 dark:bg-slate-900/80 sm:h-[340px] sm:p-4 lg:h-[430px]">
-                  <Line ref={chartRef} data={chartData} options={chartOptions} />
-                </div>
-              </div>
-            </section>
+              </section>
+            )}
           </div>
         </div>
       </div>

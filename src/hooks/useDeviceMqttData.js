@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import mqtt from "mqtt";
 
 const MQTT_CONFIG = {
@@ -24,6 +24,8 @@ const EMPTY_SENSOR_DATA = {
   pm10_aqi: 0,
   aqi: 0,
   co2: 0,
+  scd4x_temperature: 0,
+  scd4x_humidity: 0,
   f1: 0,
   f2: 0,
   f3: 0,
@@ -55,6 +57,69 @@ const parseNumeric = (value) => {
 
 export const useDeviceMqttData = ({ deviceId, enabled = true } = {}) => {
   const [sensorData, setSensorData] = useState(EMPTY_SENSOR_DATA);
+  const [sensorActive, setSensorActive] = useState({
+    aht30: false,
+    tsl2561: false,
+    veml6075: false,
+    sound: false,
+    scd4x: false,
+    as7341: false,
+  });
+
+  const lastSeenRef = useRef({
+    aht30: 0,
+    tsl2561: 0,
+    veml6075: 0,
+    sound: 0,
+    scd4x: 0,
+    as7341: 0,
+  });
+
+  // Reset states on deviceId/enabled change
+  useEffect(() => {
+    lastSeenRef.current = {
+      aht30: 0,
+      tsl2561: 0,
+      veml6075: 0,
+      sound: 0,
+      scd4x: 0,
+      as7341: 0,
+    };
+    setSensorActive({
+      aht30: false,
+      tsl2561: false,
+      veml6075: false,
+      sound: false,
+      scd4x: false,
+      as7341: false,
+    });
+  }, [deviceId, enabled]);
+
+  // Interval to check sensor inactivity
+  useEffect(() => {
+    if (!enabled || !deviceId) {
+      return undefined;
+    }
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setSensorActive((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const key in lastSeenRef.current) {
+          const lastTime = lastSeenRef.current[key];
+          const isActive = lastTime > 0 && now - lastTime < 10000;
+          if (next[key] !== isActive) {
+            next[key] = isActive;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [enabled, deviceId]);
 
   useEffect(() => {
     if (!enabled || !deviceId) {
@@ -89,12 +154,14 @@ export const useDeviceMqttData = ({ deviceId, enabled = true } = {}) => {
 
       // Check if this is dust sensor data (CSV format: pm25,aqi25,pm10,aqi10)
       if (receivedTopic === `dust_v2/${deviceId}/data`) {
+        console.log(`[MQTT Debug - Bụi] Nhận dữ liệu bụi: Topic: "${receivedTopic}" | Payload: "${rawStr}"`);
         const parts = rawStr.split(",").map(part => part.trim());
         if (parts.length >= 4) {
           const pm25 = parseNumeric(parts[0]);
           const pm25_aqi = parseNumeric(parts[1]);
           const pm10 = parseNumeric(parts[2]);
           const pm10_aqi = parseNumeric(parts[3]);
+          console.log(`[MQTT Debug - Bụi] Đã phân tích -> PM2.5: ${pm25} (AQI: ${pm25_aqi}), PM10: ${pm10} (AQI: ${pm10_aqi})`);
 
           setSensorData((prev) => ({
             ...prev,
@@ -105,6 +172,8 @@ export const useDeviceMqttData = ({ deviceId, enabled = true } = {}) => {
             timestamp: new Date().toLocaleString(),
             topic: receivedTopic,
           }));
+        } else {
+          console.warn(`[MQTT Debug - Bụi] Chuỗi dữ liệu bụi không đủ 4 giá trị: "${rawStr}"`);
         }
         return;
       }
@@ -116,6 +185,16 @@ export const useDeviceMqttData = ({ deviceId, enabled = true } = {}) => {
         try {
           const payload = JSON.parse(rawStr);
           const data = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+
+          if (lastSeenRef.current[sensorName] !== undefined) {
+            lastSeenRef.current[sensorName] = Date.now();
+            setSensorActive((prev) => {
+              if (!prev[sensorName]) {
+                return { ...prev, [sensorName]: true };
+              }
+              return prev;
+            });
+          }
 
           setSensorData((prev) => {
             const merged = { ...prev };
@@ -135,8 +214,8 @@ export const useDeviceMqttData = ({ deviceId, enabled = true } = {}) => {
               merged.sound = parseNumeric(data?.sound ?? data?.noise);
             } else if (sensorName === "scd4x") {
               merged.co2 = parseNumeric(data?.co2);
-              merged.temperature = parseNumeric(data?.temperature ?? data?.temp);
-              merged.humidity = parseNumeric(data?.humidity ?? data?.humid);
+              merged.scd4x_temperature = parseNumeric(data?.temperature ?? data?.temp);
+              merged.scd4x_humidity = parseNumeric(data?.humidity ?? data?.humid);
             } else if (sensorName === "as7341") {
               merged.f1 = parseNumeric(data?.f1);
               merged.f2 = parseNumeric(data?.f2);
@@ -179,5 +258,8 @@ export const useDeviceMqttData = ({ deviceId, enabled = true } = {}) => {
     };
   }, [enabled, deviceId]);
 
-  return sensorData;
+  return {
+    data: sensorData,
+    active: sensorActive,
+  };
 };

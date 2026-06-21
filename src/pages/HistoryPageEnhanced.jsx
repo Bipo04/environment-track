@@ -24,6 +24,11 @@ import {
   saveSelectedDeviceId,
   saveStoredDevices,
 } from "@/lib/deviceStorage";
+import {
+  getCombinedMetricBounds,
+  getMetricBounds,
+  getZoomLimitsForMetrics,
+} from "@/components/sections/dashboard/EnvironmentSensorDashboard";
 
 const HISTORY_TABLE_PAGE_SIZES = [10, 20, 50, 100];
 
@@ -57,34 +62,70 @@ const HISTORY_CHART_ZOOM_PLUGIN = {
 const CHART_ZOOM_HINT =
   "Cuộn chuột trên biểu đồ để thay đổi biên độ trục Y, kéo để dịch; đổi bộ lọc sẽ đặt lại thang.";
 
-const withHistoryChartZoom = (options) => ({
-  ...options,
-  plugins: {
-    ...options.plugins,
-    zoom: HISTORY_CHART_ZOOM_PLUGIN,
-  },
+const buildBoundedYScale = (bounds, scaleConfig = {}) => ({
+  ...scaleConfig,
+  suggestedMin: bounds.min,
+  suggestedMax: bounds.max,
+  grace: 0,
 });
+
+const withHistoryChartZoom = (options, scaleKeys = {}) => {
+  const limits = {};
+
+  if (scaleKeys.y?.length) {
+    limits.y = getZoomLimitsForMetrics(scaleKeys.y);
+  }
+  if (scaleKeys.y1?.length) {
+    limits.y1 = getZoomLimitsForMetrics(scaleKeys.y1);
+  }
+
+  return {
+    ...options,
+    plugins: {
+      ...options.plugins,
+      zoom: {
+        limits,
+        ...HISTORY_CHART_ZOOM_PLUGIN,
+      },
+    },
+  };
+};
 
 const ANALYTICS_PAGE_SIZE = 100;
 const ANALYTICS_MAX_PAGES = 8;
 
 const METRICS = [
   { key: "temperature", label: "Nhiệt độ", unit: "°C", color: "#ef4444", decimals: 1 },
-  { key: "humidity", label: "Độ ẩm", unit: "%", color: "#06b6d4", decimals: 1 },
+  { key: "humidity", label: "Độ ẩm", unit: "%", color: "#2563eb", decimals: 1 },
   { key: "lux", label: "Ánh sáng", unit: "lux", color: "#f59e0b", decimals: 0 },
   { key: "UVI", label: "UVI", unit: "", color: "#8b5cf6", decimals: 2 },
   { key: "UVA", label: "UVA", unit: "", color: "#a855f7", decimals: 2 },
   { key: "UVB", label: "UVB", unit: "", color: "#c084fc", decimals: 2 },
   { key: "broadband", label: "Broadband", unit: "", color: "#f97316", decimals: 0 },
   { key: "infrared", label: "Hồng ngoại", unit: "", color: "#ec4899", decimals: 0 },
-  { key: "sound", label: "Âm thanh", unit: "dB", color: "#22c55e", decimals: 1 },
+  { key: "sound", label: "Âm thanh", unit: "RMS", color: "#22c55e", decimals: 1 },
+  { key: "co2", label: "Khí CO2", unit: "ppm", color: "#10b981", decimals: 0 },
+  { key: "scd4x_temperature", label: "Nhiệt độ (SCD40)", unit: "°C", color: "#f43f5e", decimals: 1 },
+  { key: "scd4x_humidity", label: "Độ ẩm (SCD40)", unit: "%", color: "#0284c7", decimals: 1 },
   { key: "pm1", label: "PM1.0", unit: "µg/m3", color: "#64748b", decimals: 1 },
-  { key: "pm25", label: "PM2.5", unit: "µg/m3", color: "#475569", decimals: 1 },
+  { key: "pm25", label: "PM2.5", unit: "µg/m3", color: "#f97316", decimals: 1 },
   { key: "pm10", label: "PM10", unit: "µg/m3", color: "#334155", decimals: 1 },
   { key: "aqi", label: "AQI", unit: "", color: "#0f766e", decimals: 0 },
+  { key: "f1", label: "F1 (415nm)", unit: "", color: "#4f46e5", decimals: 0 },
+  { key: "f2", label: "F2 (445nm)", unit: "", color: "#3b82f6", decimals: 0 },
+  { key: "f3", label: "F3 (480nm)", unit: "", color: "#06b6d4", decimals: 0 },
+  { key: "f4", label: "F4 (515nm)", unit: "", color: "#10b981", decimals: 0 },
+  { key: "f5", label: "F5 (555nm)", unit: "", color: "#84cc16", decimals: 0 },
+  { key: "f6", label: "F6 (590nm)", unit: "", color: "#eab308", decimals: 0 },
+  { key: "f7", label: "F7 (630nm)", unit: "", color: "#f97316", decimals: 0 },
+  { key: "f8", label: "F8 (680nm)", unit: "", color: "#ef4444", decimals: 0 },
+  { key: "clear", label: "Specter Clear", unit: "", color: "#94a3b8", decimals: 0 },
+  { key: "nir", label: "NIR", unit: "", color: "#ec4899", decimals: 0 },
+  { key: "flicker", label: "Flicker", unit: "", color: "#a855f7", decimals: 0 },
 ];
 
 const TIME_MODES = [
+  { key: "hour", label: "Theo giờ" },
   { key: "day", label: "Theo ngày" },
   { key: "week", label: "Theo tuần" },
   { key: "month", label: "Theo tháng" },
@@ -167,8 +208,21 @@ const parseApiDateTime = (value) => {
   return Number.isNaN(iso.getTime()) ? null : iso;
 };
 
-const getDateRangeForMode = (mode, value) => {
+const getDateRangeForMode = (mode, value, hour) => {
   const now = new Date();
+  if (mode === "hour") {
+    const ref = value ? fromLocalDateString(value) : new Date();
+    const targetHour = hour !== undefined ? Number(hour) : now.getHours();
+    ref.setHours(targetHour, 0, 0, 0);
+    const end = new Date(ref.getTime() + 60 * 60 * 1000 - 1);
+
+    // Shift DB query bounds backwards by 13 minutes
+    const dbRef = new Date(ref.getTime() - 13 * 60 * 1000);
+    const dbEnd = new Date(end.getTime() - 13 * 60 * 1000);
+
+    return { from: toLocalIsoString(dbRef), to: toLocalIsoString(dbEnd), refDate: ref, endDate: end };
+  }
+
   if (mode === "day") {
     const ref = value ? fromLocalDateString(value) : new Date();
     ref.setHours(0, 0, 0, 0);
@@ -199,14 +253,16 @@ const getDateRangeForMode = (mode, value) => {
 };
 
 const MODE_POINT_LIMITS = {
-  day: 12,
+  hour: 20,
+  day: 24,
   week: 7,
   month: 10,
 };
 
-const DAY_SLOT_HOURS = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
+const DAY_SLOT_HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 const MODE_DISTRIBUTION_STEPS = {
+  hour: 1,
   day: 1,
   week: 2,
   month: 1,
@@ -257,24 +313,47 @@ const buildMonthDayBuckets = (dayCount) => {
 };
 
 const getTimeSlots = (mode, refDate = new Date(), endDate = new Date()) => {
+  if (mode === "hour") {
+    const start = new Date(refDate);
+    const slots = [];
+    for (let index = 0; index < 60; index += 1) {
+      const slotStart = new Date(start.getTime() + index * 1 * 60 * 1000);
+      const slotEnd = new Date(slotStart.getTime() + 1 * 60 * 1000 - 1);
+      const timeLabel = `${slotStart.getHours().toString().padStart(2, "0")}:${slotStart.getMinutes().toString().padStart(2, "0")}`;
+
+      slots.push({
+        key: `hour-${slotStart.getTime()}`,
+        label: (index % 3 === 0 || index === 59) ? timeLabel : "",
+        fullLabel: timeLabel,
+        matches: (timestamp) => {
+          const date = new Date(timestamp);
+          return date >= slotStart && date <= slotEnd;
+        },
+      });
+    }
+    return slots;
+  }
+
   if (mode === "day") {
     const ref = new Date(refDate);
     ref.setHours(0, 0, 0, 0);
 
-    return DAY_SLOT_HOURS.map((hour) => ({
-      key: `day-${ref.getFullYear()}-${ref.getMonth()}-${ref.getDate()}-${hour}`,
-      label: `${hour}-${hour + 2}`,
-      matches: (timestamp) => {
-        const date = new Date(timestamp);
-        return isSameCalendarDay(date, ref) && Math.floor(date.getHours() / 2) * 2 === hour;
-      },
-    }));
+    return DAY_SLOT_HOURS.map((hour) => {
+      const timeLabel = `${hour.toString().padStart(2, "0")}:00`;
+      return {
+        key: `day-${ref.getFullYear()}-${ref.getMonth()}-${ref.getDate()}-${hour}`,
+        label: timeLabel,
+        fullLabel: timeLabel,
+        matches: (timestamp) => {
+          const date = new Date(timestamp);
+          return isSameCalendarDay(date, ref) && date.getHours() === hour;
+        },
+      };
+    });
   }
 
   if (mode === "week") {
     const weekStart = getStartOfWeek(refDate);
-    const rangeEnd = new Date(endDate);
-    rangeEnd.setHours(23, 59, 59, 999);
     const slots = [];
 
     for (let index = 0; index < 7; index += 1) {
@@ -282,20 +361,18 @@ const getTimeSlots = (mode, refDate = new Date(), endDate = new Date()) => {
       dayDate.setDate(weekStart.getDate() + index);
       dayDate.setHours(0, 0, 0, 0);
 
-      if (dayDate.getTime() > rangeEnd.getTime()) {
-        break;
-      }
-
       const dayEnd = new Date(dayDate);
       dayEnd.setHours(23, 59, 59, 999);
+      const timeLabel = dayDate.toLocaleDateString("vi-VN", {
+        weekday: "short",
+        day: "2-digit",
+        month: "2-digit",
+      });
 
       slots.push({
         key: `week-${dayDate.getFullYear()}-${dayDate.getMonth()}-${dayDate.getDate()}`,
-        label: dayDate.toLocaleDateString("vi-VN", {
-          weekday: "short",
-          day: "2-digit",
-          month: "2-digit",
-        }),
+        label: timeLabel,
+        fullLabel: timeLabel,
         matches: (timestamp) => {
           const date = new Date(timestamp);
           return date >= dayDate && date <= dayEnd;
@@ -312,32 +389,37 @@ const getTimeSlots = (mode, refDate = new Date(), endDate = new Date()) => {
   const monthEnd = new Date(monthStart);
   monthEnd.setMonth(monthStart.getMonth() + 1, 0);
   monthEnd.setHours(23, 59, 59, 999);
-  const rangeEnd = new Date(endDate);
-  const effectiveEnd = rangeEnd.getTime() < monthEnd.getTime() ? rangeEnd : monthEnd;
-  const dayCount = getInclusiveDayCount(monthStart, effectiveEnd);
+  const dayCount = getInclusiveDayCount(monthStart, monthEnd);
   const buckets = buildMonthDayBuckets(dayCount);
 
-  return buckets.map((bucket) => {
-    const startDate = new Date(monthStart);
-    startDate.setDate(monthStart.getDate() + bucket.start);
-    const endDateSlot = new Date(monthStart);
-    endDateSlot.setDate(monthStart.getDate() + bucket.end);
-    endDateSlot.setHours(23, 59, 59, 999);
+  const slots = [];
+  for (let index = 0; index < dayCount; index += 1) {
+    const dayDate = new Date(monthStart);
+    dayDate.setDate(monthStart.getDate() + index);
+    dayDate.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayDate);
+    dayEnd.setHours(23, 59, 59, 999);
 
-    const label =
-      bucket.size === 1
-        ? startDate.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })
-        : `${startDate.getDate().toString().padStart(2, "0")}-${endDateSlot.getDate().toString().padStart(2, "0")}/${(startDate.getMonth() + 1).toString().padStart(2, "0")}`;
+    // Find if this day index is the start of a bucket to display the label
+    const bucket = buckets.find((b) => b.start === index);
+    let label = "";
+    if (bucket) {
+      const startDate = new Date(monthStart);
+      startDate.setDate(monthStart.getDate() + bucket.start);
+      label = startDate.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+    }
 
-    return {
-      key: `month-${monthStart.getFullYear()}-${monthStart.getMonth()}-${bucket.start}-${bucket.end}`,
+    slots.push({
+      key: `month-${monthStart.getFullYear()}-${monthStart.getMonth()}-${index}`,
       label,
+      fullLabel: dayDate.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }),
       matches: (timestamp) => {
         const date = new Date(timestamp);
-        return date >= startDate && date <= endDateSlot;
+        return date >= dayDate && date <= dayEnd;
       },
-    };
-  });
+    });
+  }
+  return slots;
 };
 
 const getModePointCount = (mode, refDate, endDate) => getTimeSlots(mode, refDate, endDate).length;
@@ -352,6 +434,7 @@ const aggregateMetricSlot = (records, metricKey, slot) => {
   if (!matched.length) {
     return {
       label: slot.label,
+      fullLabel: slot.fullLabel || slot.label,
       average: null,
       min: null,
       max: null,
@@ -367,6 +450,7 @@ const aggregateMetricSlot = (records, metricKey, slot) => {
 
   return {
     label: slot.label,
+    fullLabel: slot.fullLabel || slot.label,
     average,
     min: apiMins.length ? Math.min(...apiMins) : Math.min(...values),
     max: apiMaxs.length ? Math.max(...apiMaxs) : Math.max(...values),
@@ -382,8 +466,8 @@ const aggregateMetricSlot = (records, metricKey, slot) => {
 const ENVIRONMENT_PAIR_KEYS = ["temperature", "humidity"];
 
 const HEATMAP_METRICS = [
-  { key: "temperature", label: "Nhiệt độ", unit: "°C", low: "#fee2e2", high: "#dc2626", decimals: 1 },
-  { key: "humidity", label: "Độ ẩm", unit: "%", low: "#dbeafe", high: "#2563eb", decimals: 0 },
+  { key: "temperature", label: "Nhiệt độ", unit: "°C", color: "#ef4444", low: "#fee2e2", high: "#ef4444", decimals: 1 },
+  { key: "humidity", label: "Độ ẩm", unit: "%", color: "#2563eb", low: "#dbeafe", high: "#2563eb", decimals: 0 },
 ];
 
 const WEEKDAY_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
@@ -393,9 +477,12 @@ const ANALYSIS_GROUPS = [
   { key: "light", label: "Ánh sáng", metrics: ["lux", "broadband", "infrared"] },
   { key: "uv", label: "UV", metrics: ["UVA", "UVB", "UVI"] },
   { key: "sound", label: "Âm thanh", metrics: ["sound"] },
+  { key: "co2", label: "Khí CO2", metrics: ["co2", "scd4x_temperature", "scd4x_humidity"] },
+  { key: "dust", label: "Bụi mịn", metrics: ["pm25", "pm10"] },
+  { key: "spectrometer", label: "Quang phổ", metrics: ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "clear", "nir", "flicker"] },
 ];
 
-const SPLIT_RANGE_CHART_GROUPS = new Set(["light", "uv"]);
+const SPLIT_RANGE_CHART_GROUPS = new Set(["uv"]);
 
 const ENVIRONMENT_COLUMNS = [
   "temperature",
@@ -491,6 +578,25 @@ const formatCompactTime = (timestamp) => {
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  });
+};
+
+const formatStatTime = (time, mode) => {
+  if (!time) {
+    return "";
+  }
+
+  const date = new Date(time);
+  if (mode === "hour" || mode === "day") {
+    return date.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  return date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
   });
 };
 
@@ -600,7 +706,8 @@ const getCorrelationLabel = (value) => {
 
 const getDeviceId = (record) =>
   String(
-    record?.deviceId ??
+    record?.DeviceId ??
+      record?.deviceId ??
       record?.device_id ??
       record?.device ??
       record?.sensorId ??
@@ -610,7 +717,7 @@ const getDeviceId = (record) =>
   ).trim();
 
 const normalizeHistoryRecord = (record, index) => {
-  const createdAt =
+  const createdAtRaw =
     record?.createdAt ||
     record?.created_at ||
     record?.CreatedTime ||
@@ -618,10 +725,13 @@ const normalizeHistoryRecord = (record, index) => {
     record?.time ||
     new Date().toISOString();
 
+  const adjustedTime = new Date(createdAtRaw).getTime() + 13 * 60 * 1000;
+  const createdAt = new Date(adjustedTime).toISOString();
+
   return {
     id: record?._id || record?.id || `${createdAt}-${index}`,
     createdAt,
-    time: new Date(createdAt).getTime(),
+    time: adjustedTime,
     deviceId: getDeviceId(record),
     temperature: parseNumeric(record?.temperature ?? record?.temp),
     humidity: parseNumeric(record?.humidity ?? record?.humid),
@@ -637,6 +747,20 @@ const normalizeHistoryRecord = (record, index) => {
     pm10: parseNumeric(record?.pm10 ?? record?.PM10 ?? record?.Pm10 ?? record?.pm_10),
     // Dust table stores AQI by particle size; prefer PM2.5 AQI, fallback to PM10 AQI
     aqi: parseNumeric(record?.aqi ?? record?.AQI ?? record?.Pm25_AQI ?? record?.Pm10_AQI),
+    co2: parseNumeric(record?.co2 ?? record?.CO2),
+    scd4x_temperature: parseNumeric(record?.scd4x_temperature ?? record?.SCD_TEMP ?? record?.scd_temp),
+    scd4x_humidity: parseNumeric(record?.scd4x_humidity ?? record?.SCD_HUM ?? record?.scd_hum),
+    f1: parseNumeric(record?.f1 ?? record?.F1 ?? record?.as_f1),
+    f2: parseNumeric(record?.f2 ?? record?.F2 ?? record?.as_f2),
+    f3: parseNumeric(record?.f3 ?? record?.F3 ?? record?.as_f3),
+    f4: parseNumeric(record?.f4 ?? record?.F4 ?? record?.as_f4),
+    f5: parseNumeric(record?.f5 ?? record?.F5 ?? record?.as_f5),
+    f6: parseNumeric(record?.f6 ?? record?.F6 ?? record?.as_f6),
+    f7: parseNumeric(record?.f7 ?? record?.F7 ?? record?.as_f7),
+    f8: parseNumeric(record?.f8 ?? record?.F8 ?? record?.as_f8),
+    clear: parseNumeric(record?.clear ?? record?.Clear ?? record?.as_clear),
+    nir: parseNumeric(record?.nir ?? record?.Nir ?? record?.as_nir),
+    flicker: parseNumeric(record?.flicker ?? record?.Flicker ?? record?.as_flicker),
   };
 };
 
@@ -667,7 +791,9 @@ const getScopedRecords = (records, mode, refDate = new Date()) => {
   const now = new Date(refDate);
   const start = new Date(now);
 
-  if (mode === "day") {
+  if (mode === "hour") {
+    start.setTime(now.getTime() - 60 * 60 * 1000);
+  } else if (mode === "day") {
     start.setHours(0, 0, 0, 0);
   } else if (mode === "week") {
     start.setTime(getStartOfWeek(now).getTime());
@@ -709,7 +835,7 @@ const appendMetricRangeDatasets = (datasets, series, metric, yAxisID = "y") => {
 
   datasets.push(
     {
-      label: `Vùng ${metric.label} max-min`,
+      label: metric.label,
       data: series.map((item) => item.max),
       borderColor: `rgba(${rgb}, 0.55)`,
       backgroundColor: `rgba(${rgb}, 0.42)`,
@@ -753,6 +879,7 @@ const aggregatePairedSlot = (records, slot) => {
   if (!matched.length) {
     return {
       label: slot.label,
+      fullLabel: slot.fullLabel || slot.label,
       temperature: { average: null, min: null, max: null },
       humidity: { average: null, min: null, max: null },
       dewPoint: summarizeValues([]),
@@ -795,6 +922,7 @@ const aggregatePairedSlot = (records, slot) => {
 
   return {
     label: slot.label,
+    fullLabel: slot.fullLabel || slot.label,
     temperature: {
       average: tempAvg,
       min: temperatureMins.length
@@ -831,7 +959,8 @@ const getPairedModeSeries = (records, mode, refDate = new Date(), endDate = new 
 const getEnvMetricStats = (records, metricKey) => {
   const points = records
     .map((record) => ({ value: record[metricKey], time: record.time }))
-    .filter((point) => Number.isFinite(point.value));
+    .filter((point) => Number.isFinite(point.value))
+    .sort((a, b) => a.time - b.time);
 
   if (!points.length) {
     return null;
@@ -846,13 +975,51 @@ const getEnvMetricStats = (records, metricKey) => {
     trend: latest.value - previous.value,
     average: values.reduce((sum, value) => sum + value, 0) / values.length,
     fluctuation: Math.max(...values) - Math.min(...values),
-    max: points.reduce((best, point) => (point.value > best.value ? point : best), points[0]),
-    min: points.reduce((best, point) => (point.value < best.value ? point : best), points[0]),
+    max: points.reduce((best, point) => (point.value >= best.value ? point : best), points[0]),
+    min: points.reduce((best, point) => (point.value <= best.value ? point : best), points[0]),
   };
 };
 
 const buildHeatmapData = (records, metricKey, mode, refDate = new Date()) => {
   const now = new Date(refDate);
+
+  if (mode === "hour") {
+    const buckets = Array.from({ length: 20 }, () => []);
+    const start = now;
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+    records.forEach((record) => {
+      const value = record[metricKey];
+      if (!Number.isFinite(value)) return;
+      const date = new Date(record.time);
+      if (date >= start && date <= end) {
+        const diffMinutes = Math.floor((date.getTime() - start.getTime()) / (3 * 60 * 1000));
+        if (diffMinutes >= 0 && diffMinutes < 20) {
+          buckets[diffMinutes].push(value);
+        }
+      }
+    });
+
+    const values = buckets.map((vals) =>
+      vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null
+    );
+    const flat = values.filter((v) => Number.isFinite(v));
+    return {
+      mode,
+      sections: [
+        {
+          columns: Array.from({ length: 10 }, (_, i) => `${i * 3}-${(i + 1) * 3}m`),
+          values: values.slice(0, 10),
+        },
+        {
+          columns: Array.from({ length: 10 }, (_, i) => `${(i + 10) * 3}-${(i + 11) * 3}m`),
+          values: values.slice(10, 20),
+        },
+      ],
+      min: flat.length ? Math.min(...flat) : null,
+      max: flat.length ? Math.max(...flat) : null,
+    };
+  }
 
   if (mode === "day") {
     const buckets = Array.from({ length: 24 }, () => []);
@@ -978,12 +1145,168 @@ const getStrongestPeriod = (records, metricKey, mode, refDate = new Date(), endD
 const getModeSeries = (records, metricKey, mode, refDate = new Date(), endDate = new Date()) =>
   getTimeSlots(mode, refDate, endDate).map((slot) => aggregateMetricSlot(records, metricKey, slot));
 
-const getDistributionSeries = (series, mode) => {
-  const step = MODE_DISTRIBUTION_STEPS[mode] || 1;
-  return series.filter((_, index) => index % step === 0);
+
+
+const THRESHOLDS = {
+  temperature: 0.1,
+  humidity: 0.5,
+  broadband: 10,
+  infrared: 10,
+  lux: 10,
+  UVA: 0.1,
+  UVB: 0.1,
+  UVI: 0.1,
+  sound: 20,
+  pm1: 1,
+  pm25: 1,
+  pm10: 1,
+  aqi: 1,
+  co2: 10,
+  scd4x_temperature: 0.1,
+  scd4x_humidity: 0.5,
+  f1: 10, f2: 10, f3: 10, f4: 10,
+  f5: 10, f6: 10, f7: 10, f8: 10,
+  clear: 10, nir: 10, flicker: 5
 };
 
-const getPeriodStats = (series) => {
+const METRIC_ADVANCED_CONFIGS = {
+  sound: { kUp: 1.5, kDown: 1.8, cooldownLimit: 2, emaAlpha: 0.6 },
+  temperature: { kUp: 1.5, kDown: 1.5, cooldownLimit: 1, emaAlpha: 0.1 },
+  scd4x_temperature: { kUp: 1.5, kDown: 1.5, cooldownLimit: 1, emaAlpha: 0.1 },
+  co2: { kUp: 2.0, kDown: 2.0, cooldownLimit: 2, emaAlpha: 0.2 }
+};
+
+function computeClientReversalCount(metricKey, values, mode) {
+  if (values.length <= 1) {
+    return 0;
+  }
+
+  const baseThreshold = THRESHOLDS[metricKey] ?? 1.0;
+  const advConfig = METRIC_ADVANCED_CONFIGS[metricKey] || {};
+  const kUp = advConfig.kUp ?? 2.0;
+  const kDown = advConfig.kDown ?? 2.5;
+  const cooldownLimit = advConfig.cooldownLimit ?? 3;
+  const emaAlpha = advConfig.emaAlpha ?? 0.2;
+  const isSubPeriodData = mode !== "hour"; // in frontend, hour view uses raw values, other modes use aggregated values (hour/day)
+
+  let reversalCount = 0;
+  const isSound = metricKey.toLowerCase() === "sound";
+
+  if (isSound) {
+    let direction = "none";
+    let refValue = null;
+    let cooldownCounter = 0;
+    let filteredValue = null;
+
+    // Calculate stddev
+    const sum = values.reduce((a, b) => a + b, 0);
+    const mean = sum / values.length;
+    const sumSqDiff = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0);
+    const variance = values.length > 1 ? sumSqDiff / (values.length - 1) : 0;
+    const stddev = Math.pow(variance, 0.5);
+
+    const effectiveAlpha = isSubPeriodData ? Math.min(1.0, emaAlpha * 2.5) : emaAlpha;
+
+    for (const rawValue of values) {
+      if (filteredValue === null) {
+        filteredValue = rawValue;
+      } else {
+        filteredValue = (effectiveAlpha * rawValue) + ((1.0 - effectiveAlpha) * filteredValue);
+      }
+      const x_t = filteredValue;
+
+      const thresholdUp = Math.max(baseThreshold, kUp * stddev);
+      const thresholdDown = Math.max(baseThreshold * 1.2, kDown * stddev);
+
+      if (cooldownCounter > 0) {
+        cooldownCounter--;
+      }
+
+      if (refValue === null) {
+        refValue = x_t;
+        continue;
+      }
+
+      if (direction === "none") {
+        const diff = x_t - refValue;
+        if (diff >= thresholdUp) {
+          direction = "up";
+          refValue = x_t;
+        } else if (diff <= -thresholdDown) {
+          direction = "down";
+          refValue = x_t;
+        }
+      } else if (direction === "up") {
+        if (x_t > refValue) {
+          refValue = x_t;
+        } else if ((refValue - x_t) >= thresholdDown) {
+          if (cooldownCounter === 0) {
+            reversalCount++;
+            direction = "down";
+            refValue = x_t;
+            cooldownCounter = cooldownLimit;
+          } else {
+            refValue = x_t;
+          }
+        }
+      } else if (direction === "down") {
+        if (x_t < refValue) {
+          refValue = x_t;
+        } else if ((x_t - refValue) >= thresholdUp) {
+          if (cooldownCounter === 0) {
+            reversalCount++;
+            direction = "up";
+            refValue = x_t;
+            cooldownCounter = cooldownLimit;
+          } else {
+            refValue = x_t;
+          }
+        }
+      }
+    }
+  } else {
+    let direction = "none";
+    let refValue = null;
+
+    for (const x_t of values) {
+      if (refValue === null) {
+        refValue = x_t;
+        continue;
+      }
+
+      if (direction === "none") {
+        const diff = x_t - refValue;
+        if (diff >= baseThreshold) {
+          direction = "up";
+          refValue = x_t;
+        } else if (diff <= -baseThreshold) {
+          direction = "down";
+          refValue = x_t;
+        }
+      } else if (direction === "up") {
+        if (x_t > refValue) {
+          refValue = x_t;
+        } else if ((refValue - x_t) >= baseThreshold) {
+          reversalCount++;
+          direction = "down";
+          refValue = x_t;
+        }
+      } else if (direction === "down") {
+        if (x_t < refValue) {
+          refValue = x_t;
+        } else if ((x_t - refValue) >= baseThreshold) {
+          reversalCount++;
+          direction = "up";
+          refValue = x_t;
+        }
+      }
+    }
+  }
+
+  return reversalCount;
+}
+
+const getPeriodStats = (series, metricKey, mode = "day") => {
   const points = series
     .map((item) => ({
       label: item.label,
@@ -998,21 +1321,12 @@ const getPeriodStats = (series) => {
   }
 
   const deltas = [];
-  let reversalCount = 0;
-
   for (let index = 1; index < points.length; index += 1) {
     const delta = points[index].value - points[index - 1].value;
     deltas.push({
       delta,
       label: points[index].label,
     });
-
-    if (index >= 2) {
-      const previousDelta = points[index - 1].value - points[index - 2].value;
-      if ((delta > 0 && previousDelta < 0) || (delta < 0 && previousDelta > 0)) {
-        reversalCount += 1;
-      }
-    }
   }
 
   const average = points.reduce((sum, item) => sum + item.value, 0) / points.length;
@@ -1022,6 +1336,8 @@ const getPeriodStats = (series) => {
   const strongestJump = deltas.length
     ? deltas.reduce((best, item) => (Math.abs(item.delta) > Math.abs(best.delta) ? item : best), deltas[0])
     : null;
+
+  const reversalCount = computeClientReversalCount(metricKey, points.map((p) => p.value), mode);
 
   return {
     latest: points[points.length - 1],
@@ -1073,10 +1389,11 @@ const buildProfileBreakdown = (records, metricKey) => {
   };
 };
 
-const getMetricStats = (records, metricKey) => {
+const getMetricStats = (records, metricKey, mode = "day") => {
   const points = records
     .map((record) => ({ value: record[metricKey], time: record.time }))
-    .filter((point) => point.value !== null && point.value !== undefined);
+    .filter((point) => point.value !== null && point.value !== undefined)
+    .sort((a, b) => a.time - b.time);
 
   if (!points.length) {
     return null;
@@ -1084,7 +1401,6 @@ const getMetricStats = (records, metricKey) => {
 
   const values = points.map((point) => point.value);
   const deltas = [];
-  let reversalCount = 0;
 
   for (let index = 1; index < points.length; index += 1) {
     const delta = points[index].value - points[index - 1].value;
@@ -1094,19 +1410,14 @@ const getMetricStats = (records, metricKey) => {
       from: points[index - 1].value,
       to: points[index].value,
     });
-
-    if (index >= 2) {
-      const previousDelta = points[index - 1].value - points[index - 2].value;
-      if ((delta > 0 && previousDelta < 0) || (delta < 0 && previousDelta > 0)) {
-        reversalCount += 1;
-      }
-    }
   }
+
+  const reversalCount = computeClientReversalCount(metricKey, values, mode);
 
   const absoluteDeltas = deltas.map((item) => Math.abs(item.delta));
   const latest = points[points.length - 1];
-  const peak = points.reduce((best, point) => (point.value > best.value ? point : best), points[0]);
-  const low = points.reduce((best, point) => (point.value < best.value ? point : best), points[0]);
+  const peak = points.reduce((best, point) => (point.value >= best.value ? point : best), points[0]);
+  const low = points.reduce((best, point) => (point.value <= best.value ? point : best), points[0]);
   const strongestJump = deltas.length
     ? deltas.reduce((best, item) => (Math.abs(item.delta) > Math.abs(best.delta) ? item : best), deltas[0])
     : null;
@@ -1181,7 +1492,7 @@ const baseChartOptions = {
   },
 };
 
-const chartOptions = withHistoryChartZoom(baseChartOptions);
+
 
 const StatCard = ({ label, value, subvalue, accent }) => (
   <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
@@ -1189,7 +1500,7 @@ const StatCard = ({ label, value, subvalue, accent }) => (
     <p className="mt-3 text-2xl font-bold" style={{ color: accent }}>
       {value}
     </p>
-    {subvalue ? <p className="mt-2 text-sm text-muted-foreground">{subvalue}</p> : null}
+    {subvalue ? <div className="mt-2 text-sm text-muted-foreground">{subvalue}</div> : null}
   </div>
 );
 
@@ -1230,7 +1541,20 @@ const HeatmapGrid = ({ data, metric }) => {
 
     const ratio = range > 0 ? (value - data.min) / range : 0.5;
     const alpha = 0.18 + ratio * 0.74;
-    const rgb = metric.key === "temperature" ? "220, 38, 38" : "37, 99, 235";
+    
+    let rgb = "37, 99, 235";
+    const colorHex = metric.color || (metric.key === "temperature" ? "#ef4444" : "#2563eb");
+    try {
+      const clean = colorHex.replace("#", "");
+      if (clean.length === 6) {
+        const num = parseInt(clean, 16);
+        const r = (num >> 16) & 255;
+        const g = (num >> 8) & 255;
+        const b = num & 255;
+        rgb = `${r}, ${g}, ${b}`;
+      }
+    } catch (e) {}
+
     return `rgba(${rgb}, ${alpha})`;
   };
 
@@ -1275,6 +1599,48 @@ const HeatmapGrid = ({ data, metric }) => {
   );
 };
 
+const METRIC_CODE_TO_FIELD = {
+  temperature: "temperature",
+  temp: "temperature",
+  temp_min: "temperature",
+  temp_max: "temperature",
+  humidity: "humidity",
+  hum: "humidity",
+  co2: "co2",
+  scd_temp: "scd4x_temperature",
+  scd_hum: "scd4x_humidity",
+  scd4x_temperature: "scd4x_temperature",
+  scd4x_humidity: "scd4x_humidity",
+  scd_temp_min: "scd4x_temperature",
+  scd_temp_max: "scd4x_temperature",
+  scd_hum_min: "scd4x_humidity",
+  scd_hum_max: "scd4x_humidity",
+  lux: "lux",
+  uvi: "UVI",
+  uva: "UVA",
+  uvb: "UVB",
+  broadband: "broadband",
+  broad: "broadband",
+  infrared: "infrared",
+  ir: "infrared",
+  sound: "sound",
+  pm1: "pm1",
+  pm25: "pm25",
+  pm10: "pm10",
+  aqi: "aqi",
+  as_f1: "f1",
+  as_f2: "f2",
+  as_f3: "f3",
+  as_f4: "f4",
+  as_f5: "f5",
+  as_f6: "f6",
+  as_f7: "f7",
+  as_f8: "f8",
+  as_clear: "clear",
+  as_nir: "nir",
+  as_flicker: "flicker",
+};
+
 export const HistoryPage = () => {
   const navigate = useNavigate();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -1284,6 +1650,7 @@ export const HistoryPage = () => {
   const [analyticsData, setAnalyticsData] = useState([]);
   const [analyticsRefDate, setAnalyticsRefDate] = useState(() => new Date());
   const [analyticsEndDate, setAnalyticsEndDate] = useState(() => new Date());
+  const [dbStats, setDbStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -1293,11 +1660,13 @@ export const HistoryPage = () => {
   const [timeMode, setTimeMode] = useState("day");
   const [selectedAnalysisGroupKey, setSelectedAnalysisGroupKey] = useState("environment");
   const [selectedMetricKey, setSelectedMetricKey] = useState("temperature");
+  const [latestRawRecord, setLatestRawRecord] = useState(null);
   // Date range picker states — default to today/this week/this month
   const todayStr = toLocalDateString(new Date());
   const thisWeekMonStr = toLocalDateString(getStartOfWeek(new Date()));
   const thisMonthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
   const [selectedDay, setSelectedDay] = useState(todayStr);
+  const [selectedHour, setSelectedHour] = useState(() => new Date().getHours());
   const [selectedWeek, setSelectedWeek] = useState(getWeekInputValue(new Date()));
   const [selectedMonth, setSelectedMonth] = useState(thisMonthStr);
   const selectedDevice = useMemo(
@@ -1344,85 +1713,128 @@ export const HistoryPage = () => {
 
       setLoading(true);
       setError("");
+      setDbStats(null);
 
       try {
-        const pickerValue = timeMode === "day"
+        const pickerValue = (timeMode === "day" || timeMode === "hour")
           ? selectedDay
           : timeMode === "week"
             ? selectedWeek
             : selectedMonth;
-        const { from, to, refDate, endDate } = getDateRangeForMode(timeMode, pickerValue);
+        const { from, to, refDate, endDate } = getDateRangeForMode(timeMode, pickerValue, selectedHour);
+
+        const requestType = (selectedHistoryType === "air" || selectedAnalysisGroupKey === "dust")
+          ? "air"
+          : "environment";
+
+        // Fetch DB-stored aggregate summary statistics for the selected device and time range
+        const summaryPeriodType = timeMode;
+        const summaryStartStr = toLocalIsoString(refDate);
+
+        historyService.getAggregateMetrics({
+          deviceId: selectedDeviceId,
+          periodType: summaryPeriodType,
+          exact: "true",
+          limit: 100,
+          page: 1,
+          from: summaryStartStr,
+          to: summaryStartStr,
+        }).then((summaryResult) => {
+          if (isCancelled) return;
+          const stats = {};
+          for (const row of (summaryResult.data || [])) {
+            const code = row.metric_code?.toLowerCase();
+            const fieldName = METRIC_CODE_TO_FIELD[code] || code;
+            if (fieldName) {
+              stats[fieldName] = {
+                reversalCount: parseNumeric(row.reversal_count),
+                avgDelta: parseNumeric(row.avg_delta),
+                avgValue: parseNumeric(row.avg_value),
+                minValue: parseNumeric(row.min_value),
+                maxValue: parseNumeric(row.max_value),
+              };
+            }
+          }
+          setDbStats(stats);
+        }).catch((err) => {
+          console.warn("Failed to fetch database summary aggregate stats:", err);
+          if (!isCancelled) setDbStats(null);
+        });
 
         const historyResult = await historyService.getHistoryData({
-          page: currentPage,
-          limit: itemsPerPage,
-          type: selectedHistoryType,
+          page: timeMode === "hour" ? 1 : currentPage,
+          limit: timeMode === "hour" ? 500 : itemsPerPage,
+          type: requestType,
           deviceId: selectedDeviceId,
           from,
           to,
         });
         if (isCancelled) return;
 
-        setTableData((historyResult.data || []).map(normalizeHistoryRecord));
-        setTotalPages(historyResult.totalPages || 1);
-        setTotal(historyResult.total || 0);
-
-        const aggregatePeriod = timeMode;
-        const aggregateResult = await historyService.getAggregateMetrics({
-          deviceId: selectedDeviceId,
-          periodType: aggregatePeriod,
-          limit: 500,
-          page: 1,
-          from,
-          to,
-        });
-        if (isCancelled) return;
-
-        const periodMap = new Map();
-        for (const row of (aggregateResult.data || [])) {
-          const parsedStart = parseApiDateTime(row.period_start);
-          if (!parsedStart) continue;
-          const key = parsedStart.getTime();
-          if (!periodMap.has(key)) {
-            periodMap.set(key, {
-              id: `agg-${key}`,
-              createdAt: parsedStart.toISOString(),
-              time: key,
-              deviceId: row.device_id,
-              period_end: parseApiDateTime(row.period_end)?.toISOString() || row.period_end,
-              sample_count: row.sample_count,
-            });
-          }
-          const record = periodMap.get(key);
-          const code = row.metric_code?.toLowerCase();
-          const fieldMap = {
-            temperature: "temperature",
-            humidity: "humidity",
-            lux: "lux",
-            uvi: "UVI",
-            uva: "UVA",
-            uvb: "UVB",
-            broadband: "broadband",
-            infrared: "infrared",
-            sound: "sound",
-            pm1: "pm1",
-            pm25: "pm25",
-            pm10: "pm10",
-            aqi: "aqi",
-          };
-          const fieldName = fieldMap[code] || code;
-          if (fieldName) {
-            record[fieldName] = parseNumeric(row.avg_value);
-            record[`${fieldName}_min`] = parseNumeric(row.min_value);
-            record[`${fieldName}_max`] = parseNumeric(row.max_value);
-            record[`${fieldName}_avg_delta`] = parseNumeric(row.avg_delta);
-          }
+        const rawRecords = (historyResult.data || []).map(normalizeHistoryRecord);
+        if (currentPage === 1) {
+          setLatestRawRecord(rawRecords[0] || null);
         }
 
-        const pivoted = Array.from(periodMap.values()).sort((a, b) => a.time - b.time);
-        setAnalyticsData(pivoted);
-        setAnalyticsRefDate(refDate);
-        setAnalyticsEndDate(endDate || fromLocalDateTimeString(to) || new Date());
+        if (timeMode === "hour") {
+          setTableData(rawRecords);
+          setAnalyticsData(rawRecords);
+          setTotalPages(Math.ceil((historyResult.total || 0) / itemsPerPage) || 1);
+          setTotal(historyResult.total || 0);
+
+          setAnalyticsRefDate(refDate);
+          setAnalyticsEndDate(endDate);
+        } else {
+          setTableData(rawRecords);
+          setTotalPages(historyResult.totalPages || 1);
+          setTotal(historyResult.total || 0);
+
+          const aggregatePeriod = timeMode;
+          const aggregateResult = await historyService.getAggregateMetrics({
+            deviceId: selectedDeviceId,
+            periodType: aggregatePeriod,
+            limit: 2000,
+            page: 1,
+            from,
+            to,
+          });
+          if (isCancelled) return;
+
+          const periodMap = new Map();
+          for (const row of (aggregateResult.data || [])) {
+            const parsedStartRaw = parseApiDateTime(row.period_start);
+            if (!parsedStartRaw) continue;
+            const parsedStart = new Date(parsedStartRaw.getTime());
+            const key = parsedStart.getTime();
+            if (!periodMap.has(key)) {
+              const parsedEndRaw = parseApiDateTime(row.period_end);
+              const parsedEnd = parsedEndRaw ? new Date(parsedEndRaw.getTime()) : null;
+              periodMap.set(key, {
+                id: `agg-${key}`,
+                createdAt: parsedStart.toISOString(),
+                time: key,
+                deviceId: row.device_id,
+                period_end: parsedEnd?.toISOString() || row.period_end,
+                sample_count: row.sample_count,
+              });
+            }
+            const record = periodMap.get(key);
+            const code = row.metric_code?.toLowerCase();
+            const fieldName = METRIC_CODE_TO_FIELD[code] || code;
+            if (fieldName) {
+              record[fieldName] = parseNumeric(row.avg_value);
+              record[`${fieldName}_min`] = parseNumeric(row.min_value);
+              record[`${fieldName}_max`] = parseNumeric(row.max_value);
+              record[`${fieldName}_avg_delta`] = parseNumeric(row.avg_delta);
+              record[`${fieldName}_reversal_count`] = parseNumeric(row.reversal_count);
+            }
+          }
+
+          const pivoted = Array.from(periodMap.values()).sort((a, b) => a.time - b.time);
+          setAnalyticsData(pivoted);
+          setAnalyticsRefDate(refDate);
+          setAnalyticsEndDate(endDate || fromLocalDateTimeString(to) || new Date());
+        }
       } catch (fetchError) {
         if (isCancelled) return;
         setError(fetchError.message || "Không thể tải lịch sử dữ liệu.");
@@ -1439,7 +1851,7 @@ export const HistoryPage = () => {
     return () => {
       isCancelled = true;
     };
-  }, [currentPage, itemsPerPage, navigate, selectedDeviceId, selectedHistoryType, timeMode, selectedDay, selectedWeek, selectedMonth]);
+  }, [currentPage, itemsPerPage, navigate, selectedDeviceId, selectedHistoryType, timeMode, selectedDay, selectedWeek, selectedMonth, selectedAnalysisGroupKey, selectedHour]);
 
   const handleRegisterDevice = (device) => {
     setDevices((previous) => [...previous, device]);
@@ -1449,6 +1861,11 @@ export const HistoryPage = () => {
   const handleUnregisterDevice = (deviceId) => {
     setDevices((previous) => previous.filter((device) => device.id !== deviceId));
   };
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedDeviceId, timeMode, selectedDay, selectedWeek, selectedMonth, selectedAnalysisGroupKey, itemsPerPage, selectedHour]);
 
   const filteredAnalytics = useMemo(() => {
     if (!selectedDeviceId) {
@@ -1460,7 +1877,13 @@ export const HistoryPage = () => {
 
   // Table data is raw history already fetched for the selected device/type,
   // so show it directly (no dependency on aggregate payload shape).
-  const filteredTableData = tableData;
+  const filteredTableData = useMemo(() => {
+    if (timeMode === "hour") {
+      const startIndex = (currentPage - 1) * itemsPerPage;
+      return tableData.slice(startIndex, startIndex + itemsPerPage);
+    }
+    return tableData;
+  }, [tableData, timeMode, currentPage, itemsPerPage]);
 
   // Aggregate data is already pre-grouped by periodType from the API,
   // so no need to scope by the current time window.
@@ -1469,27 +1892,29 @@ export const HistoryPage = () => {
     [filteredAnalytics, timeMode, analyticsEndDate]
   );
 
-  const recordColumns = useMemo(
-    () => getRecordColumns(selectedHistoryType, filteredTableData),
-    [filteredTableData, selectedHistoryType]
-  );
-
   const availableMetrics = useMemo(
     () =>
       METRICS.filter((metric) =>
-        filteredAnalytics.some((record) => record[metric.key] !== null && record[metric.key] !== undefined)
+        filteredAnalytics.some((record) => record[metric.key] !== null && record[metric.key] !== undefined) ||
+        filteredTableData.some((record) => record[metric.key] !== null && record[metric.key] !== undefined)
       ),
-    [filteredAnalytics]
+    [filteredAnalytics, filteredTableData]
   );
-  const availableAnalysisGroups = useMemo(
-    () =>
-      ANALYSIS_GROUPS.filter((group) =>
-        group.metrics.some((metricKey) =>
-          filteredAnalytics.some((record) => Number.isFinite(record[metricKey]))
-        )
-      ),
-    [filteredAnalytics]
-  );
+  const availableAnalysisGroups = useMemo(() => {
+    if (selectedHistoryType === "air") {
+      return ANALYSIS_GROUPS.filter((group) => group.key === "dust");
+    }
+    if (selectedHistoryType === "environment") {
+      return ANALYSIS_GROUPS;
+    }
+    return ANALYSIS_GROUPS.filter((group) => {
+      if (group.key === "dust") return true;
+      return group.metrics.some((metricKey) =>
+        filteredAnalytics.some((record) => Number.isFinite(record[metricKey])) ||
+        filteredTableData.some((record) => Number.isFinite(record[metricKey]))
+      );
+    });
+  }, [filteredAnalytics, filteredTableData, selectedHistoryType]);
 
   useEffect(() => {
     if (!availableAnalysisGroups.length) {
@@ -1505,6 +1930,11 @@ export const HistoryPage = () => {
     availableAnalysisGroups.find((group) => group.key === selectedAnalysisGroupKey) ||
     availableAnalysisGroups[0] ||
     ANALYSIS_GROUPS[0];
+
+  const recordColumns = useMemo(
+    () => activeAnalysisGroup?.metrics || [],
+    [activeAnalysisGroup]
+  );
   const activeGroupMetrics = activeAnalysisGroup.metrics
     .map(getMetricMeta)
     .filter((metric) =>
@@ -1540,7 +1970,7 @@ export const HistoryPage = () => {
     () => getEnvMetricStats(scopedAnalytics, "humidity"),
     [scopedAnalytics]
   );
-  const latestDewPoint = calculateDewPoint(temperatureStats?.latest.value, humidityStats?.latest.value);
+  const latestDewPoint = calculateDewPoint(latestRawRecord?.temperature ?? null, latestRawRecord?.humidity ?? null);
   const dewPointStatus = getDewPointStatus(latestDewPoint);
   const tempHumidityCorrelation = useMemo(
     () => calculateCorrelation(scopedAnalytics, "temperature", "humidity"),
@@ -1554,9 +1984,16 @@ export const HistoryPage = () => {
     () => buildHeatmapData(scopedAnalytics, "humidity", timeMode, analyticsRefDate),
     [scopedAnalytics, timeMode, analyticsRefDate]
   );
+  const groupHeatmapsData = useMemo(() => {
+    const dataMap = {};
+    activeGroupMetrics.forEach((metric) => {
+      dataMap[metric.key] = buildHeatmapData(scopedAnalytics, metric.key, timeMode, analyticsRefDate);
+    });
+    return dataMap;
+  }, [activeGroupMetrics, scopedAnalytics, timeMode, analyticsRefDate]);
   const metricStats = useMemo(
-    () => getMetricStats(scopedAnalytics, selectedMetricKey),
-    [scopedAnalytics, selectedMetricKey]
+    () => getMetricStats(scopedAnalytics, selectedMetricKey, timeMode),
+    [scopedAnalytics, selectedMetricKey, timeMode]
   );
   const trendSeries = useMemo(
     () => getModeSeries(scopedAnalytics, selectedMetricKey, timeMode, analyticsRefDate, analyticsEndDate),
@@ -1574,8 +2011,9 @@ export const HistoryPage = () => {
           borderColor: metric.color,
           backgroundColor: `${metric.color}22`,
           fill: false,
-          tension: 0.35,
-          pointRadius: 2.5,
+          tension: 0,
+          pointRadius: 0,
+          pointHoverRadius: 5,
         };
       }),
     }),
@@ -1589,34 +2027,24 @@ export const HistoryPage = () => {
         {
           label: "Nhiệt độ",
           data: environmentSeries.map((item) => item.temperature.average),
-          borderColor: "#ef4444",
-          backgroundColor: "#ef4444",
+          borderColor: getMetricMeta("temperature").color,
+          backgroundColor: getMetricMeta("temperature").color,
           borderWidth: 2.5,
-          tension: 0.35,
-          pointRadius: 2.5,
+          tension: 0,
+          pointRadius: 0,
+          pointHoverRadius: 5,
           yAxisID: "y",
         },
         {
           label: "Độ ẩm",
           data: environmentSeries.map((item) => item.humidity.average),
-          borderColor: "#2563eb",
-          backgroundColor: "#2563eb",
+          borderColor: getMetricMeta("humidity").color,
+          backgroundColor: getMetricMeta("humidity").color,
           borderWidth: 2.5,
-          tension: 0.35,
-          pointRadius: 2.5,
+          tension: 0,
+          pointRadius: 0,
+          pointHoverRadius: 5,
           yAxisID: "y1",
-        },
-        {
-          label: "Điểm sương",
-          data: environmentSeries.map((item) => item.dewPoint.average),
-          borderColor: "#8b5cf6",
-          backgroundColor: "#8b5cf6",
-          borderDash: [6, 5],
-          borderWidth: 2,
-          hidden: false,
-          tension: 0.35,
-          pointRadius: 2,
-          yAxisID: "y",
         },
       ],
     }),
@@ -1637,11 +2065,11 @@ export const HistoryPage = () => {
       max: item.humidity.max,
     }));
 
-    appendMetricRangeDatasets(datasets, tempSeries, { label: "Nhiệt độ", color: "#ef4444" }, "y");
+    appendMetricRangeDatasets(datasets, tempSeries, getMetricMeta("temperature"), "y");
     appendMetricRangeDatasets(
       datasets,
       humiditySeries,
-      { label: "Độ ẩm", color: "#2563eb" },
+      getMetricMeta("humidity"),
       "y1"
     );
 
@@ -1658,7 +2086,11 @@ export const HistoryPage = () => {
     const datasets = [];
     let labels = [];
 
-    activeGroupMetrics.forEach((metric) => {
+    const targetMetrics = selectedAnalysisGroupKey === "spectrometer"
+      ? activeGroupMetrics.filter((metric) => metric.key === selectedMetricKey)
+      : activeGroupMetrics;
+
+    targetMetrics.forEach((metric) => {
       const series = getModeSeries(
         scopedAnalytics,
         metric.key,
@@ -1673,28 +2105,107 @@ export const HistoryPage = () => {
     });
 
     return { labels, datasets };
-  }, [activeGroupMetrics, scopedAnalytics, timeMode, analyticsRefDate, analyticsEndDate, usesSplitRangeCharts]);
+  }, [activeGroupMetrics, scopedAnalytics, timeMode, analyticsRefDate, analyticsEndDate, usesSplitRangeCharts, selectedAnalysisGroupKey, selectedMetricKey]);
 
   const splitMetricRangeCharts = useMemo(
     () =>
       usesSplitRangeCharts
-        ? activeGroupMetrics.map((metric) => ({
-            metric,
-            data: buildMetricRangeData(
+        ? activeGroupMetrics.map((metric) => {
+            const data = buildMetricRangeData(
               metric,
               scopedAnalytics,
               timeMode,
               analyticsRefDate,
               analyticsEndDate
-            ),
-          }))
+            );
+            const series = getModeSeries(scopedAnalytics, metric.key, timeMode, analyticsRefDate, analyticsEndDate);
+            const vals = series.flatMap(item => [item.average, item.min, item.max]);
+            const bounds = getMetricBounds(metric.key, vals);
+            return {
+              metric,
+              data,
+              bounds,
+            };
+          })
         : [],
     [activeGroupMetrics, scopedAnalytics, timeMode, analyticsRefDate, analyticsEndDate, usesSplitRangeCharts]
   );
 
-  const environmentChartOptions = useMemo(
+  const activeMetricBounds = useMemo(() => {
+    const series = getModeSeries(scopedAnalytics, selectedMetricKey, timeMode, analyticsRefDate, analyticsEndDate);
+    const vals = series.flatMap(item => [item.average, item.min, item.max]);
+    return getMetricBounds(selectedMetricKey, vals);
+  }, [scopedAnalytics, selectedMetricKey, timeMode, analyticsRefDate, analyticsEndDate]);
+
+  const chartOptions = useMemo(
     () =>
-      withHistoryChartZoom({
+      withHistoryChartZoom(
+        {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: (context) => {
+                  const index = context[0].dataIndex;
+                  return trendSeries[index]?.fullLabel || context[0].label || "";
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: "#64748b" },
+              grid: { color: "rgba(148, 163, 184, 0.12)" },
+            },
+            y: buildBoundedYScale(activeMetricBounds, {
+              ticks: { color: "#64748b" },
+              grid: { color: "rgba(148, 163, 184, 0.12)" },
+            }),
+          },
+        },
+        { y: [selectedMetricKey] }
+      ),
+    [activeMetricBounds, selectedMetricKey, trendSeries]
+  );
+
+  const combinedGroupBounds = useMemo(() => {
+    if (usesSplitRangeCharts) return { min: undefined, max: undefined };
+
+    const targetMetrics = selectedAnalysisGroupKey === "spectrometer"
+      ? activeGroupMetrics.filter((metric) => metric.key === selectedMetricKey)
+      : activeGroupMetrics;
+
+    const metricKeys = targetMetrics.map((metric) => metric.key);
+    const allVals = [];
+
+    targetMetrics.forEach((metric) => {
+      const series = getModeSeries(scopedAnalytics, metric.key, timeMode, analyticsRefDate, analyticsEndDate);
+      series.forEach((item) => {
+        if (Number.isFinite(item.average)) allVals.push(item.average);
+        if (Number.isFinite(item.min)) allVals.push(item.min);
+        if (Number.isFinite(item.max)) allVals.push(item.max);
+      });
+    });
+
+    return getCombinedMetricBounds(metricKeys, allVals);
+  }, [activeGroupMetrics, scopedAnalytics, timeMode, analyticsRefDate, analyticsEndDate, usesSplitRangeCharts, selectedAnalysisGroupKey, selectedMetricKey]);
+
+  const environmentChartOptions = useMemo(() => {
+    const temps = environmentSeries.map(item => item.temperature.average);
+    const tempMaxs = environmentSeries.map(item => item.temperature.max);
+    const tempMins = environmentSeries.map(item => item.temperature.min);
+    const tempBounds = getMetricBounds("temperature", [...temps, ...tempMaxs, ...tempMins]);
+
+    const hums = environmentSeries.map(item => item.humidity.average);
+    const humMaxs = environmentSeries.map(item => item.humidity.max);
+    const humMins = environmentSeries.map(item => item.humidity.min);
+    const humBounds = getMetricBounds("humidity", [...hums, ...humMaxs, ...humMins]);
+
+    return withHistoryChartZoom(
+      {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
@@ -1707,36 +2218,58 @@ export const HistoryPage = () => {
               boxWidth: 8,
             },
           },
+          tooltip: {
+            callbacks: {
+              title: (context) => {
+                const index = context[0].dataIndex;
+                return environmentSeries[index]?.fullLabel || context[0].label || "";
+              }
+            }
+          }
         },
         scales: {
           x: {
             ticks: { color: "#64748b" },
             grid: { color: "rgba(148, 163, 184, 0.12)" },
           },
-          y: {
+          y: buildBoundedYScale(tempBounds, {
             type: "linear",
             position: "left",
             title: { display: true, text: "Nhiệt độ (°C)" },
-            suggestedMin: 20,
-            suggestedMax: 40,
             ticks: { color: "#ef4444" },
             grid: { color: "rgba(148, 163, 184, 0.12)" },
-          },
-          y1: {
+          }),
+          y1: buildBoundedYScale(humBounds, {
             type: "linear",
             position: "right",
             title: { display: true, text: "Độ ẩm (%)" },
-            suggestedMin: 30,
-            suggestedMax: 100,
             ticks: { color: "#2563eb" },
             grid: { drawOnChartArea: false },
-          },
+          }),
         },
-      }),
-    []
-  );
+      },
+      { y: ["temperature"], y1: ["humidity"] }
+    );
+  }, [environmentSeries]);
 
   const rangeChartLegendFilter = (item) => !String(item.text).endsWith(" min");
+
+  const rangeChartTooltipCallbacks = useMemo(
+    () => ({
+      label: (context) => {
+        const label = context.dataset.label || "";
+        const isMin = label.endsWith(" min");
+        const metricLabel = isMin ? label.slice(0, -4) : label;
+        const value = context.parsed.y;
+        const metricMeta = METRICS.find((m) => m.label === metricLabel);
+        const decimals = metricMeta !== undefined ? metricMeta.decimals : 1;
+        const unit = metricMeta?.unit ? ` ${metricMeta.unit}` : "";
+        const formattedVal = value !== null && value !== undefined ? value.toFixed(decimals) : "-";
+        return `${metricLabel} ${isMin ? "min" : "max"}: ${formattedVal}${unit}`;
+      },
+    }),
+    []
+  );
 
   const environmentRangeChartOptions = useMemo(
     () => ({
@@ -1750,6 +2283,26 @@ export const HistoryPage = () => {
             usePointStyle: true,
             boxWidth: 8,
           },
+          onClick: (e, legendItem, legend) => {
+            const index = legendItem.datasetIndex;
+            const ci = legend.chart;
+            const isVisible = ci.isDatasetVisible(index);
+            ci.setDatasetVisibility(index, !isVisible);
+            const nextDataset = ci.data.datasets[index + 1];
+            if (nextDataset && String(nextDataset.label).endsWith(" min")) {
+              ci.setDatasetVisibility(index + 1, !isVisible);
+            }
+            ci.update();
+          },
+        },
+        tooltip: {
+          callbacks: {
+            ...rangeChartTooltipCallbacks,
+            title: (context) => {
+              const index = context[0].dataIndex;
+              return environmentSeries[index]?.fullLabel || context[0].label || "";
+            }
+          },
         },
       },
       elements: {
@@ -1761,45 +2314,73 @@ export const HistoryPage = () => {
         },
       },
     }),
-    [environmentChartOptions]
+    [environmentChartOptions, rangeChartTooltipCallbacks]
   );
 
   const groupRangeChartOptions = useMemo(
-    () =>
-      withHistoryChartZoom({
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: {
-            display: true,
-            labels: {
-              filter: rangeChartLegendFilter,
-              usePointStyle: true,
-              boxWidth: 8,
+    () => {
+      const zoomMetrics = selectedAnalysisGroupKey === "spectrometer"
+        ? activeGroupMetrics.filter((metric) => metric.key === selectedMetricKey)
+        : activeGroupMetrics;
+
+      return withHistoryChartZoom(
+        {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: {
+              display: true,
+              labels: {
+                filter: rangeChartLegendFilter,
+                usePointStyle: true,
+                boxWidth: 8,
+              },
+              onClick: (e, legendItem, legend) => {
+                const index = legendItem.datasetIndex;
+                const ci = legend.chart;
+                const isVisible = ci.isDatasetVisible(index);
+                ci.setDatasetVisibility(index, !isVisible);
+                const nextDataset = ci.data.datasets[index + 1];
+                if (nextDataset && String(nextDataset.label).endsWith(" min")) {
+                  ci.setDatasetVisibility(index + 1, !isVisible);
+                }
+                ci.update();
+              },
+            },
+            tooltip: {
+              callbacks: {
+                ...rangeChartTooltipCallbacks,
+                title: (context) => {
+                  const index = context[0].dataIndex;
+                  return trendSeries[index]?.fullLabel || context[0].label || "";
+                }
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: "#64748b" },
+              grid: { color: "rgba(148, 163, 184, 0.12)" },
+            },
+            y: buildBoundedYScale(combinedGroupBounds, {
+              ticks: { color: "#64748b" },
+              grid: { color: "rgba(148, 163, 184, 0.12)" },
+            }),
+          },
+          elements: {
+            line: {
+              tension: 0,
+            },
+            point: {
+              radius: 0,
             },
           },
         },
-        scales: {
-          x: {
-            ticks: { color: "#64748b" },
-            grid: { color: "rgba(148, 163, 184, 0.12)" },
-          },
-          y: {
-            ticks: { color: "#64748b" },
-            grid: { color: "rgba(148, 163, 184, 0.12)" },
-          },
-        },
-        elements: {
-          line: {
-            tension: 0,
-          },
-          point: {
-            radius: 0,
-          },
-        },
-      }),
-    []
+        { y: zoomMetrics.map((metric) => metric.key) }
+      );
+    },
+    [combinedGroupBounds, activeGroupMetrics, rangeChartTooltipCallbacks, selectedAnalysisGroupKey, selectedMetricKey, trendSeries]
   );
 
   const chartScopeKey = useMemo(
@@ -1840,7 +2421,10 @@ export const HistoryPage = () => {
     });
   }, [chartScopeKey]);
 
-  const periodStats = useMemo(() => getPeriodStats(trendSeries), [trendSeries]);
+  const periodStats = useMemo(
+    () => getPeriodStats(trendSeries, selectedMetricKey, timeMode),
+    [trendSeries, selectedMetricKey, timeMode]
+  );
 
   const selectedAnalysisPeriod = useMemo(
     () =>
@@ -1866,22 +2450,21 @@ export const HistoryPage = () => {
     return "mốc";
   }, [timeMode]);
 
-  const distributionSeries = useMemo(
-    () => getDistributionSeries(trendSeries, timeMode),
-    [timeMode, trendSeries]
-  );
+  const displayReversalCount = useMemo(() => {
+    if (dbStats && dbStats[selectedMetricKey]?.reversalCount !== undefined && dbStats[selectedMetricKey]?.reversalCount !== null) {
+      return dbStats[selectedMetricKey].reversalCount;
+    }
+    return periodStats?.reversalCount ?? 0;
+  }, [dbStats, selectedMetricKey, periodStats]);
 
-  const distributionData = {
-    labels: distributionSeries.map((item) => item.label),
-    datasets: [
-      {
-        label: `${selectedMetric.label} trung bình`,
-        data: distributionSeries.map((item) => item.average),
-        backgroundColor: `${selectedMetric.color}99`,
-        borderRadius: 10,
-      },
-    ],
-  };
+  const displayReversalSubvalue = useMemo(() => {
+    if (dbStats && dbStats[selectedMetricKey]?.reversalCount !== undefined && dbStats[selectedMetricKey]?.reversalCount !== null) {
+      return `Đổi hướng tăng hoặc giảm giữa các ${selectedAnalysisLabel} liên tiếp`;
+    }
+    return `Đổi hướng tăng hoặc giảm giữa các ${selectedAnalysisLabel} liên tiếp`;
+  }, [dbStats, selectedMetricKey, selectedAnalysisLabel]);
+
+
 
   const sidebarProps = {
     devices,
@@ -1907,20 +2490,12 @@ export const HistoryPage = () => {
             </aside>
 
             <section className="min-w-0 flex-1 rounded-r-[28px] overflow-hidden">
-              <div className="border-b border-border/50 bg-linear-to-r from-sky-500/10 via-transparent to-emerald-500/10 px-5 py-6 sm:px-8">
+              <div className="border-b border-border/50 bg-background/40 px-5 py-6 sm:px-8">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
-                      Sensor History Intelligence
-                    </p>
                     <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
                       Lịch sử và phân tích <span className="text-primary">dữ liệu cảm biến</span>
                     </h1>
-                    <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-                      Trang này dùng chung danh sách thiết bị với dashboard qua localStorage. Ngoài bảng lịch sử,
-                      nó phân tích xu hướng theo giờ, ngày, tuần và chỉ ra biên độ biến động, thời điểm đạt đỉnh
-                      và các lần đảo chiều cho từng cảm biến.
-                    </p>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">
@@ -1952,77 +2527,116 @@ export const HistoryPage = () => {
                         <div>
                           <p className="text-sm font-semibold">Bộ lọc phân tích</p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                          Chọn cảm biến và nhịp tổng hợp nhẹ hơn để xem hành vi dữ liệu rõ hơn.
+                          Chọn cảm biến và nhịp tổng hợp để xem hành vi dữ liệu.
                           </p>
                         </div>
 
-                      <div className="flex flex-wrap gap-3">
-                        <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
-                          <span className="text-muted-foreground">Cụm phân tích</span>
-                          <select
-                            value={selectedAnalysisGroupKey}
-                            onChange={(event) => setSelectedAnalysisGroupKey(event.target.value)}
-                            className="bg-transparent outline-none"
-                          >
-                            {availableAnalysisGroups.map((group) => (
-                              <option key={group.key} value={group.key}>
-                                {group.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
-                          <span className="text-muted-foreground">Thời gian</span>
-                          <select
-                            value={timeMode}
-                            onChange={(event) => setTimeMode(event.target.value)}
-                            className="bg-transparent outline-none"
-                          >
-                            {TIME_MODES.map((item) => (
-                              <option key={item.key} value={item.key}>
-                                {item.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        {timeMode === "day" ? (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-wrap gap-3">
                           <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
-                            <span className="text-muted-foreground">Chọn ngày</span>
-                            <input
-                              type="date"
-                              value={selectedDay}
-                              onChange={(event) => setSelectedDay(event.target.value)}
+                            <span className="text-muted-foreground">Cụm phân tích</span>
+                            <select
+                              value={selectedAnalysisGroupKey}
+                              onChange={(event) => setSelectedAnalysisGroupKey(event.target.value)}
                               className="bg-transparent outline-none"
-                            />
+                            >
+                              {availableAnalysisGroups.map((group) => (
+                                <option key={group.key} value={group.key}>
+                                  {group.label}
+                                </option>
+                              ))}
+                            </select>
                           </label>
-                        ) : null}
 
-                        {timeMode === "week" ? (
+                          {activeGroupMetrics.length > 1 && (
+                            <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
+                              <span className="text-muted-foreground">Chỉ số</span>
+                              <select
+                                value={selectedMetricKey}
+                                onChange={(event) => setSelectedMetricKey(event.target.value)}
+                                className="bg-transparent outline-none"
+                              >
+                                {activeGroupMetrics.map((metric) => (
+                                  <option key={metric.key} value={metric.key}>
+                                    {metric.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+
                           <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
-                            <span className="text-muted-foreground">Chọn tuần</span>
-                            <input
-                              type="week"
-                              value={selectedWeek}
-                              onChange={(event) => setSelectedWeek(event.target.value)}
+                            <span className="text-muted-foreground">Thời gian</span>
+                            <select
+                              value={timeMode}
+                              onChange={(event) => setTimeMode(event.target.value)}
                               className="bg-transparent outline-none"
-                            />
+                            >
+                              {TIME_MODES.map((item) => (
+                                <option key={item.key} value={item.key}>
+                                  {item.label}
+                                </option>
+                              ))}
+                            </select>
                           </label>
-                        ) : null}
+                        </div>
 
-                        {timeMode === "month" ? (
-                          <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
-                            <span className="text-muted-foreground">Chọn tháng</span>
-                            <input
-                              type="month"
-                              value={selectedMonth}
-                              onChange={(event) => setSelectedMonth(event.target.value)}
-                              className="bg-transparent outline-none"
-                            />
-                          </label>
-                        ) : null}
+                        {(timeMode === "day" || timeMode === "hour" || timeMode === "week" || timeMode === "month") && (
+                          <div className="flex flex-wrap gap-3">
+                            {timeMode === "day" || timeMode === "hour" ? (
+                              <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
+                                <span className="text-muted-foreground">Chọn ngày</span>
+                                <input
+                                  type="date"
+                                  value={selectedDay}
+                                  onChange={(event) => setSelectedDay(event.target.value)}
+                                  className="bg-transparent outline-none"
+                                />
+                              </label>
+                            ) : null}
 
+                            {timeMode === "hour" ? (
+                              <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
+                                <span className="text-muted-foreground">Chọn giờ</span>
+                                <select
+                                  value={selectedHour}
+                                  onChange={(event) => setSelectedHour(Number(event.target.value))}
+                                  className="bg-transparent outline-none"
+                                >
+                                  {Array.from({ length: 24 }, (_, i) => (
+                                    <option key={i} value={i}>
+                                      {String(i).padStart(2, "0")}:00
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : null}
+
+                            {timeMode === "week" ? (
+                              <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
+                                <span className="text-muted-foreground">Chọn tuần</span>
+                                <input
+                                  type="week"
+                                  value={selectedWeek}
+                                  onChange={(event) => setSelectedWeek(event.target.value)}
+                                  className="bg-transparent outline-none"
+                                />
+                              </label>
+                            ) : null}
+
+                            {timeMode === "month" ? (
+                              <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card px-3 py-2 text-sm">
+                                <span className="text-muted-foreground">Chọn tháng</span>
+                                <input
+                                  type="month"
+                                  value={selectedMonth}
+                                  onChange={(event) => setSelectedMonth(event.target.value)}
+                                  className="bg-transparent outline-none"
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2057,92 +2671,47 @@ export const HistoryPage = () => {
                     {isEnvironmentAnalysis ? (
                       <>
                         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                          <ComparisonStatCard
-                            title="Hiện tại & xu hướng"
-                            rows={[
-                              {
-                                label: "Nhiệt độ hiện tại",
-                                value: formatMetricValue(temperatureStats?.latest.value, "temperature"),
-                                sideLabel: "Xu hướng",
-                                side: formatSignedMetricValue(temperatureStats?.trend, "temperature"),
-                                accent: "#ef4444",
-                              },
-                              {
-                                label: "Độ ẩm hiện tại",
-                                value: formatMetricValue(humidityStats?.latest.value, "humidity"),
-                                sideLabel: "Xu hướng",
-                                side: formatSignedMetricValue(humidityStats?.trend, "humidity"),
-                                accent: "#2563eb",
-                              },
-                            ]}
+                          <StatCard
+                            label={`Dữ liệu mới nhất · ${selectedMetric.label}`}
+                            value={formatMetricValue(latestRawRecord?.[selectedMetric.key] ?? null, selectedMetric.key)}
+                            subvalue={latestRawRecord ? `Thời điểm nhận: ${formatDateTime(latestRawRecord.time)}` : "Không có dữ liệu"}
+                            accent={selectedMetric.color}
                           />
-                          <ComparisonStatCard
-                            title="Trung bình & dao động"
-                            rows={[
-                              {
-                                label: "Nhiệt độ trung bình",
-                                value: formatMetricValue(temperatureStats?.average, "temperature"),
-                                sideLabel: "Dao động",
-                                side: formatMetricValue(temperatureStats?.fluctuation, "temperature"),
-                                accent: "#ef4444",
-                              },
-                              {
-                                label: "Độ ẩm trung bình",
-                                value: formatMetricValue(humidityStats?.average, "humidity"),
-                                sideLabel: "Dao động",
-                                side: formatMetricValue(humidityStats?.fluctuation, "humidity"),
-                                accent: "#2563eb",
-                              },
-                            ]}
+                          <StatCard
+                            label={`Giá trị trung bình · ${selectedMetric.label}`}
+                            value={formatMetricValue(metricStats?.average, selectedMetric.key)}
+                            subvalue={(() => {
+                              const minVal = formatMetricValue(metricStats?.min?.value, selectedMetric.key);
+                              const minTime = metricStats?.min?.time ? ` (${formatStatTime(metricStats.min.time, timeMode)})` : "";
+                              const maxVal = formatMetricValue(metricStats?.max?.value, selectedMetric.key);
+                              const maxTime = metricStats?.max?.time ? ` (${formatStatTime(metricStats.max.time, timeMode)})` : "";
+                              return (
+                                <div className="flex flex-col gap-0.5">
+                                  <span>Min: {minVal}{minTime}</span>
+                                  <span>Max: {maxVal}{maxTime}</span>
+                                </div>
+                              );
+                            })()}
+                            accent={selectedMetric.color}
                           />
-                          <ComparisonStatCard
-                            title="Điểm sương"
-                            rows={[
-                              {
-                                label: "Điểm sương hiện tại",
-                                value: formatMetricValue(latestDewPoint, "temperature"),
-                                accent: "#8b5cf6",
-                              },
-                              {
-                                label: "Trạng thái",
-                                value: dewPointStatus.label,
-                                accent: "#8b5cf6",
-                              },
-                            ]}
-                            footer={dewPointStatus.note}
+                          <StatCard
+                            label={`Biên độ trung bình theo ${selectedAnalysisLabel}`}
+                            value={formatMetricValue(periodStats?.averageAbsDelta, selectedMetric.key)}
+                            subvalue={periodStats?.strongestJump ? `Bước nhảy lớn nhất: ${formatSignedMetricValue(periodStats.strongestJump.delta, selectedMetric.key)} (${periodStats.strongestJump.label || "-"})` : "Không có bước nhảy"}
+                            accent={selectedMetric.color}
                           />
-                          <ComparisonStatCard
-                            title="Tương quan & cảnh báo"
-                            rows={[
-                              {
-                                label: "Nhiệt độ cực đại",
-                                value: formatMetricValue(temperatureStats?.max.value, "temperature"),
-                                sideLabel: "Thời điểm",
-                                side: formatCompactTime(temperatureStats?.max.time),
-                                accent: "#ef4444",
-                              },
-                              {
-                                label: "Độ ẩm cực đại",
-                                value: formatMetricValue(humidityStats?.max.value, "humidity"),
-                                sideLabel: "Thời điểm",
-                                side: formatCompactTime(humidityStats?.max.time),
-                                accent: "#2563eb",
-                              },
-                              {
-                                label: "Tương quan",
-                                value: Number.isFinite(tempHumidityCorrelation) ? tempHumidityCorrelation.toFixed(2) : "-",
-                                sideLabel: "Mức độ",
-                                side: getCorrelationLabel(tempHumidityCorrelation),
-                                accent: "#0f766e",
-                              },
-                            ]}
+                          <StatCard
+                            label={`Số lần đảo chiều theo ${selectedAnalysisLabel}`}
+                            value={displayReversalCount}
+                            subvalue={displayReversalSubvalue}
+                            accent={selectedMetric.color}
                           />
                         </div>
 
                         <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
                           <h2 className="text-xl font-bold">Đồ thị xu hướng: Nhiệt độ & Độ ẩm</h2>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            Mặc định chỉ hiển thị nhiệt độ và độ ẩm. Điểm sương có thể bật trong legend khi cần đối chiếu. {CHART_ZOOM_HINT}
+                            Hiển thị nhiệt độ và độ ẩm theo thời gian. {CHART_ZOOM_HINT}
                           </p>
                           <div className="mt-5 h-[380px]">
                             <Line
@@ -2154,7 +2723,7 @@ export const HistoryPage = () => {
                           </div>
                         </div>
 
-                        <div className="grid gap-6 xl:grid-cols-2">
+                        <div className={timeMode === "hour" ? "grid gap-6 grid-cols-1" : "grid gap-6 xl:grid-cols-2"}>
                           <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
                             <div>
                               <h2 className="text-xl font-bold">Phân bố chu kỳ</h2>
@@ -2174,47 +2743,60 @@ export const HistoryPage = () => {
                             </div>
                           </div>
 
-                          <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
-                            <h2 className="text-xl font-bold">Đỉnh và đáy theo chu kỳ</h2>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              Dải đỏ nhạt thể hiện nhiệt độ max-min, dải xanh nhạt thể hiện độ ẩm max-min. {CHART_ZOOM_HINT}
-                            </p>
-                            <div className="mt-5 h-[320px]">
-                              <Line
-                                key={`env-range-${chartScopeKey}`}
-                                ref={environmentRangeChartRef}
-                                data={environmentRangeData}
-                                options={environmentRangeChartOptions}
-                              />
+                          {timeMode !== "hour" && (
+                            <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
+                              <h2 className="text-xl font-bold">Đỉnh và đáy theo chu kỳ</h2>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                Dải đỏ nhạt thể hiện nhiệt độ max-min, dải xanh nhạt thể hiện độ ẩm max-min. {CHART_ZOOM_HINT}
+                              </p>
+                              <div className="mt-5 h-[320px]">
+                                <Line
+                                  key={`env-range-${chartScopeKey}`}
+                                  ref={environmentRangeChartRef}
+                                  data={environmentRangeData}
+                                  options={environmentRangeChartOptions}
+                                />
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       </>
                     ) : (
                       <>
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                       <StatCard
-                        label={`${selectedAnalysisLabel} hiện tại · ${selectedMetric.label}`}
-                        value={formatMetricValue(periodStats?.latest.value, selectedMetric.key)}
-                        subvalue={`Kỳ gần nhất: ${periodStats?.latest.label || "-"}`}
+                        label={`Dữ liệu mới nhất · ${selectedMetric.label}`}
+                        value={formatMetricValue(latestRawRecord?.[selectedMetric.key] ?? null, selectedMetric.key)}
+                        subvalue={latestRawRecord ? `Thời điểm nhận: ${formatDateTime(latestRawRecord.time)}` : "Không có dữ liệu"}
                         accent={selectedMetric.color}
                       />
                       <StatCard
-                        label={`Giá trị trung bình theo ${selectedAnalysisLabel}`}
-                        value={formatMetricValue(periodStats?.average, selectedMetric.key)}
-                        subvalue={`Trung bình của các ${selectedAnalysisLabel} trong phạm vi đang phân tích`}
+                        label={`Giá trị trung bình · ${selectedMetric.label}`}
+                        value={formatMetricValue(metricStats?.average, selectedMetric.key)}
+                        subvalue={(() => {
+                          const minVal = formatMetricValue(metricStats?.min?.value, selectedMetric.key);
+                          const minTime = metricStats?.min?.time ? ` (${formatStatTime(metricStats.min.time, timeMode)})` : "";
+                          const maxVal = formatMetricValue(metricStats?.max?.value, selectedMetric.key);
+                          const maxTime = metricStats?.max?.time ? ` (${formatStatTime(metricStats.max.time, timeMode)})` : "";
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              <span>Min: {minVal}{minTime}</span>
+                              <span>Max: {maxVal}{maxTime}</span>
+                            </div>
+                          );
+                        })()}
                         accent={selectedMetric.color}
                       />
                       <StatCard
                         label={`Biên độ trung bình theo ${selectedAnalysisLabel}`}
                         value={formatMetricValue(periodStats?.averageAbsDelta, selectedMetric.key)}
-                        subvalue={`Trung bình |${selectedAnalysisLabel} sau - ${selectedAnalysisLabel} trước|`}
+                        subvalue={periodStats?.strongestJump ? `Bước nhảy lớn nhất: ${formatSignedMetricValue(periodStats.strongestJump.delta, selectedMetric.key)} (${periodStats.strongestJump.label || "-"})` : "Không có bước nhảy"}
                         accent={selectedMetric.color}
                       />
                       <StatCard
                         label={`Số lần đảo chiều theo ${selectedAnalysisLabel}`}
-                        value={periodStats?.reversalCount ?? 0}
-                        subvalue={`Đổi hướng tăng hoặc giảm giữa các ${selectedAnalysisLabel} liên tiếp`}
+                        value={displayReversalCount}
+                        subvalue={displayReversalSubvalue}
                         accent={selectedMetric.color}
                       />
                     </div>
@@ -2241,136 +2823,97 @@ export const HistoryPage = () => {
                         </div>
                       </div>
 
-                      <div className={`grid gap-6 ${usesSplitRangeCharts ? "" : "xl:grid-cols-2"}`}>
+                      <div className={timeMode === "hour" ? "grid gap-6 grid-cols-1" : "grid gap-6 xl:grid-cols-2"}>
                         <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
-                          <h2 className="text-xl font-bold">Phân bố chu kỳ</h2>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            Dữ liệu được lấy cùng mode đã chọn và hiển thị theo giá trị trung bình. {CHART_ZOOM_HINT}
-                          </p>
-                          <div className="mt-5 h-[320px]">
-                            <Bar key={`distribution-${chartScopeKey}`} data={distributionData} options={chartOptions} />
+                          <div>
+                            <h2 className="text-xl font-bold">Phân bố chu kỳ</h2>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Heatmap hiển thị các chỉ số theo giờ trong ngày và thứ trong tuần.
+                            </p>
+                          </div>
+                          <div className="mt-5 space-y-6">
+                            {(selectedAnalysisGroupKey === "spectrometer"
+                              ? activeGroupMetrics.filter((metric) => metric.key === selectedMetricKey)
+                              : activeGroupMetrics
+                            ).map((metric) => {
+                              const heatmapData = groupHeatmapsData[metric.key];
+                              if (!heatmapData) return null;
+                              return (
+                                <div key={`group-heatmap-${metric.key}`}>
+                                  <p className="mb-3 text-sm font-semibold" style={{ color: metric.color }}>
+                                    {metric.label} {metric.unit ? `(${metric.unit})` : ""}
+                                  </p>
+                                  <HeatmapGrid data={heatmapData} metric={metric} />
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
 
-                        {!usesSplitRangeCharts ? (
-                          <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
-                            <h2 className="text-xl font-bold">Đỉnh và đáy theo chu kỳ</h2>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              Mỗi chỉ số trong cụm hiển thị dải max-min theo chu kỳ, cùng kiểu đồ thị vùng góc nhọn như nhiệt độ và độ ẩm. {CHART_ZOOM_HINT}
-                            </p>
-                            <div className="mt-5 h-[320px]">
-                              <Line
-                                key={`group-range-${chartScopeKey}`}
-                                ref={groupRangeChartRef}
-                                data={groupRangeData}
-                                options={groupRangeChartOptions}
-                              />
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {usesSplitRangeCharts ? (
-                        <div className="space-y-4">
-                          <div>
-                            <h2 className="text-xl font-bold">Đỉnh và đáy theo chu kỳ</h2>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              Mỗi chỉ số có một đồ thị riêng, hiển thị dải max-min theo chu kỳ với góc nhọn. {CHART_ZOOM_HINT}
-                            </p>
-                          </div>
-                          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                            {splitMetricRangeCharts.map(({ metric, data }) => (
-                              <div
-                                key={metric.key}
-                                className="rounded-3xl border border-border/60 bg-background/70 p-5"
-                              >
-                                <h3 className="text-base font-bold" style={{ color: metric.color }}>
-                                  {metric.label}
-                                </h3>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  Dải max-min {metric.label.toLowerCase()}
-                                  {metric.unit ? ` (${metric.unit})` : ""}
-                                </p>
-                                <div className="mt-4 h-[260px]">
-                                  <Line
-                                    key={`split-range-${chartScopeKey}-${metric.key}`}
-                                    data={data}
-                                    options={groupRangeChartOptions}
-                                  />
+                        {timeMode !== "hour" && (
+                          usesSplitRangeCharts ? (
+                            <div className="space-y-6">
+                              <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
+                                <div>
+                                  <h2 className="text-xl font-bold">Đỉnh và đáy theo chu kỳ</h2>
+                                  <p className="mt-1 text-sm text-muted-foreground">
+                                    Mỗi chỉ số có một đồ thị riêng, hiển thị dải max-min theo chu kỳ với góc nhọn. {CHART_ZOOM_HINT}
+                                  </p>
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="grid gap-6">
-                      <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
-                        <h2 className="text-xl font-bold">Bảng phân tích chuyên sâu</h2>
-                        <div className="mt-5 overflow-x-auto">
-                          <table className="w-full min-w-[680px] border-collapse text-sm">
-                            <thead>
-                              <tr className="border-b border-border/60 text-left text-muted-foreground">
-                                <th className="px-3 py-3 font-medium">Chỉ số</th>
-                                <th className="px-3 py-3 font-medium">Kết quả</th>
-                                <th className="px-3 py-3 font-medium">Ý nghĩa</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr className="border-b border-border/40">
-                                <td className="px-3 py-3 font-medium">Đỉnh theo {selectedAnalysisLabel}</td>
-                                <td className="px-3 py-3">
-                                  {selectedAnalysisPeriod?.label || "-"}
-                                  {" · "}
-                                  {formatMetricValue(selectedAnalysisPeriod?.average, selectedMetric.key)}
-                                </td>
-                                <td className="px-3 py-3 text-muted-foreground">Mốc {selectedAnalysisLabel} có trung bình cao nhất trong dữ liệu hiện có.</td>
-                              </tr>
-                              <tr className="border-b border-border/40">
-                                <td className="px-3 py-3 font-medium">Giá trị cao nhất tuyệt đối</td>
-                                <td className="px-3 py-3">
-                                  {formatMetricValue(metricStats?.max.value, selectedMetric.key)}
-                                  {" · "}
-                                  {formatDateTime(metricStats?.max.time)}
-                                </td>
-                                <td className="px-3 py-3 text-muted-foreground">Đỉnh tuyệt đối của cảm biến trong toàn bộ tập dữ liệu đang xét.</td>
-                              </tr>
-                              <tr className="border-b border-border/40">
-                                <td className="px-3 py-3 font-medium">Giá trị thấp nhất tuyệt đối</td>
-                                <td className="px-3 py-3">
-                                  {formatMetricValue(metricStats?.min.value, selectedMetric.key)}
-                                  {" · "}
-                                  {formatDateTime(metricStats?.min.time)}
-                                </td>
-                                <td className="px-3 py-3 text-muted-foreground">Đáy tuyệt đối của cảm biến trong toàn bộ tập dữ liệu đang xét.</td>
-                              </tr>
-                              <tr className="border-b border-border/40">
-                                <td className="px-3 py-3 font-medium">Cú nhảy mạnh nhất</td>
-                                <td className="px-3 py-3">
-                                  {periodStats?.strongestJump
-                                    ? `${formatMetricValue(periodStats.strongestJump.delta, selectedMetric.key)} · ${periodStats.strongestJump.label}`
-                                    : "-"}
-                                </td>
-                                <td className="px-3 py-3 text-muted-foreground">Khoảng chênh lớn nhất giữa 2 {selectedAnalysisLabel} liên tiếp.</td>
-                              </tr>
-                              <tr className="border-b border-border/40">
-                                <td className="px-3 py-3 font-medium">Biên độ trung bình</td>
-                                <td className="px-3 py-3">
-                                  {formatMetricValue(periodStats?.averageAbsDelta, selectedMetric.key)}
-                                </td>
-                                <td className="px-3 py-3 text-muted-foreground">Trung bình |{selectedAnalysisLabel} sau - {selectedAnalysisLabel} trước| trên chuỗi đã gộp.</td>
-                              </tr>
-                              <tr>
-                                <td className="px-3 py-3 font-medium">Số lần đảo chiều</td>
-                                <td className="px-3 py-3">
-                                  {periodStats?.reversalCount ?? 0}
-                                </td>
-                                <td className="px-3 py-3 text-muted-foreground">Số lần chuỗi trung bình theo {selectedAnalysisLabel} đổi hướng tăng sang giảm hoặc ngược lại.</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
+                              <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
+                                {splitMetricRangeCharts.map(({ metric, data, bounds }) => {
+                                  const chartOpts = withHistoryChartZoom(
+                                    {
+                                      ...groupRangeChartOptions,
+                                      scales: {
+                                        ...groupRangeChartOptions.scales,
+                                        y: buildBoundedYScale(bounds, groupRangeChartOptions.scales?.y),
+                                      },
+                                    },
+                                    { y: [metric.key] }
+                                  );
+                                  return (
+                                    <div
+                                      key={metric.key}
+                                      className="rounded-3xl border border-border/60 bg-background/70 p-5"
+                                    >
+                                      <h3 className="text-base font-bold" style={{ color: metric.color }}>
+                                        {metric.label}
+                                      </h3>
+                                      <p className="mt-1 text-xs text-muted-foreground">
+                                        Dải max-min {metric.label.toLowerCase()}
+                                        {metric.unit ? ` (${metric.unit})` : ""}
+                                      </p>
+                                      <div className="mt-4 h-[260px]">
+                                        <Line
+                                          key={`split-range-${chartScopeKey}-${metric.key}`}
+                                          data={data}
+                                          options={chartOpts}
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="rounded-3xl border border-border/60 bg-background/70 p-5">
+                              <h2 className="text-xl font-bold">Đỉnh và đáy theo chu kỳ</h2>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                Mỗi chỉ số trong cụm hiển thị dải max-min theo chu kỳ, cùng kiểu đồ thị vùng góc nhọn như nhiệt độ và độ ẩm. {CHART_ZOOM_HINT}
+                              </p>
+                              <div className="mt-5 h-[320px]">
+                                <Line
+                                  key={`group-range-${chartScopeKey}`}
+                                  ref={groupRangeChartRef}
+                                  data={groupRangeData}
+                                  options={groupRangeChartOptions}
+                                />
+                              </div>
+                            </div>
+                          )
+                        )}
                       </div>
                     </div>
                       </>

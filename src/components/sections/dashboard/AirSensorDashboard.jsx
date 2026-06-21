@@ -180,11 +180,24 @@ const withAlpha = (hex, alpha) => {
 };
 
 const roundMetricValue = (key, value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
   const numericValue = Number(value) || 0;
   if (key.includes("aqi")) {
     return Math.round(numericValue);
   }
   return Number(numericValue.toFixed(1));
+};
+
+const getLatestNonNull = (history, key, fallback = 0) => {
+  if (!history || !history.length) return fallback;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i] && history[i][key] !== null && history[i][key] !== undefined) {
+      return history[i][key];
+    }
+  }
+  return fallback;
 };
 
 const getTrendDeadzone = (key) => {
@@ -288,12 +301,10 @@ const getTrend = (entries, key, fallbackValue = 0) => {
   if (entries.length < 2) {
     return 0;
   }
-  const baselineIndex = Math.max(0, entries.length - Math.min(6, entries.length));
-  const baseline = entries[baselineIndex][key] ?? fallbackValue;
+  const baseline = entries[entries.length - 2][key] ?? fallbackValue;
   const current = entries[entries.length - 1][key] ?? fallbackValue;
 
-  const delta = current - baseline;
-  return Math.abs(delta) < getTrendDeadzone(key) ? 0 : delta;
+  return current - baseline;
 };
 
 const getStatWindow = (entries, key) => {
@@ -317,8 +328,8 @@ const findDailyPeak = (history, key) => {
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
 
-  const todayEntries = history.filter((entry) => entry.time >= dayStart.getTime());
-  const source = todayEntries.length ? todayEntries : history.slice(-50);
+  const todayEntries = history.filter((entry) => entry.time >= dayStart.getTime() && entry[key] !== null && entry[key] !== undefined);
+  const source = todayEntries.length ? todayEntries : history.filter((entry) => entry[key] !== null && entry[key] !== undefined).slice(-50);
 
   return source.reduce(
     (peak, entry) => (entry[key] > peak[key] ? entry : peak),
@@ -335,32 +346,90 @@ const getAirQualityStatus = (aqi) => {
   return "Nguy hại";
 };
 
-const MetricSummaryCard = ({ title, datasets, latestEntry, chartHistory, mode = "current" }) => (
-  <div className="min-w-[225px] rounded-lg border border-border/50 bg-card/40 px-3 py-[11px] dark:bg-slate-900/40 sm:min-w-[250px]">
-    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
-    <div className="mt-1.5 space-y-1.5">
-      {datasets.map((dataset) => (
-        <div
-          key={`${mode}-${dataset.key}`}
-          className="flex items-center justify-between gap-3 rounded border border-border/30 bg-background/25 px-2 py-1 dark:bg-slate-950/15"
-        >
-          <div className="flex items-center gap-1.5">
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: dataset.color }}
-            />
-            <span className="whitespace-nowrap text-[13px] font-medium text-foreground/80">{dataset.label}</span>
-          </div>
-          <span className="shrink-0 whitespace-nowrap pl-1 text-sm font-bold tracking-tight text-foreground">
-            {mode === "current"
-              ? formatMetricValue(dataset.key, latestEntry[dataset.key])
-              : formatDelta(dataset.key, getTrend(chartHistory, dataset.key))}
-          </span>
-        </div>
-      ))}
+const renderTrendDelta = (key, value) => {
+  const absValue = Math.abs(value);
+  
+  let formattedText = "";
+  if (key.includes("aqi")) {
+    formattedText = `${Math.round(absValue)}`;
+  } else {
+    formattedText = `${absValue.toFixed(1)}`;
+  }
+
+  if (value > 0) {
+    return (
+      <span className="inline-flex items-center justify-end min-w-[44px] gap-0.5 text-emerald-500 font-bold">
+        <span>↑</span>
+        <span>{formattedText}</span>
+      </span>
+    );
+  } else if (value < 0) {
+    return (
+      <span className="inline-flex items-center justify-end min-w-[44px] gap-0.5 text-red-500 font-bold">
+        <span>↓</span>
+        <span>{formattedText}</span>
+      </span>
+    );
+  } else {
+    return (
+      <span className="inline-flex items-center justify-end min-w-[44px] gap-0.5 text-muted-foreground font-medium">
+        <span>—</span>
+        <span>{formattedText}</span>
+      </span>
+    );
+  }
+};
+
+const CombinedMetricSummaryCard = ({ datasets, latestEntry, chartHistory }) => {
+  const isLarge = datasets.length > 3;
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-border/50 bg-card/40 px-3.5 py-[11px] dark:bg-slate-900/40 transition-all",
+        isLarge ? "w-full md:w-[600px]" : "min-w-[280px] sm:min-w-[320px]"
+      )}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Hiện tại & Xu hướng</p>
+      <div
+        className={cn(
+          "mt-2",
+          isLarge ? "grid grid-cols-2 gap-x-4 gap-y-1.5" : "space-y-1.5"
+        )}
+      >
+        {datasets.map((dataset) => {
+          const rawValue = getLatestNonNull(chartHistory, dataset.key, null);
+          const trendValue = getTrend(chartHistory, dataset.key);
+
+          return (
+            <div
+              key={`combined-${dataset.key}`}
+              className="flex items-center justify-between gap-3 rounded border border-border/30 bg-background/25 px-2.5 py-1 dark:bg-slate-950/15"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: dataset.color }}
+                />
+                <span className="whitespace-nowrap text-[13px] font-medium text-foreground/80 truncate">
+                  {dataset.label}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 pl-1.5">
+                <span className="text-sm font-bold tracking-tight text-foreground">
+                  {formatMetricValue(dataset.key, rawValue)}
+                </span>
+                <span className="text-xs shrink-0 pl-1">
+                  {renderTrendDelta(dataset.key, trendValue)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const DeviceHeader = ({ selectedDevice }) => {
   if (!selectedDevice) return null;
@@ -410,6 +479,7 @@ export const AirSensorDashboard = ({
       pm25_aqi: selectedDeviceSnapshot?.pm25_aqi ?? calculatePm25Aqi(rawPm25),
       pm10_aqi: selectedDeviceSnapshot?.pm10_aqi ?? calculatePm10Aqi(rawPm10),
       timestamp: selectedDeviceSnapshot?.timestamp || new Date().toLocaleString(),
+      topic: selectedDeviceSnapshot?.topic || "",
     };
   }, [selectedDeviceSnapshot]);
 
@@ -478,7 +548,8 @@ export const AirSensorDashboard = ({
     if (sampleKey === lastSampleKey.current) return;
 
     const now = Date.now();
-    if (lastRecordedTime.current !== 0 && now - lastRecordedTime.current < 1000) {
+    const isDustTopic = currentSnapshot.topic && currentSnapshot.topic.startsWith("dust_v2");
+    if (!isDustTopic && lastRecordedTime.current !== 0 && now - lastRecordedTime.current < 1000) {
       return;
     }
 
@@ -487,12 +558,14 @@ export const AirSensorDashboard = ({
 
     setHistoryByDevice((previous) => {
       const prevList = previous[selectedDevice.id] || [];
+      const isDustTopic = currentSnapshot.topic && currentSnapshot.topic.startsWith("dust_v2");
+
       const nextEntry = {
         time: Date.now(),
-        pm25: roundMetricValue("pm25", currentSnapshot.pm25),
-        pm10: roundMetricValue("pm10", currentSnapshot.pm10),
-        pm25_aqi: roundMetricValue("pm25_aqi", currentSnapshot.pm25_aqi),
-        pm10_aqi: roundMetricValue("pm10_aqi", currentSnapshot.pm10_aqi),
+        pm25: isDustTopic ? roundMetricValue("pm25", currentSnapshot.pm25) : null,
+        pm10: isDustTopic ? roundMetricValue("pm10", currentSnapshot.pm10) : null,
+        pm25_aqi: isDustTopic ? roundMetricValue("pm25_aqi", currentSnapshot.pm25_aqi) : null,
+        pm10_aqi: isDustTopic ? roundMetricValue("pm10_aqi", currentSnapshot.pm10_aqi) : null,
       };
 
       // Limit data window to 7 days
@@ -522,26 +595,37 @@ export const AirSensorDashboard = ({
     ];
   }, [history, currentSnapshot]);
 
-  const chartHistory = useMemo(() => displayHistory.slice(-20), [displayHistory]);
-  const sparklineHistory = useMemo(() => displayHistory.slice(-18), [displayHistory]);
-  
-  const latestEntry = useMemo(() => displayHistory[displayHistory.length - 1], [displayHistory]);
   const tabDefinition = AIR_TAB_CONFIG[selectedTab];
+  const chartHistory = useMemo(() => {
+    const keys = tabDefinition.datasets.map((d) => d.key);
+    const filtered = displayHistory.filter((entry) => 
+      keys.some((key) => entry[key] !== null && entry[key] !== undefined)
+    );
+    return filtered.length ? filtered.slice(-20) : displayHistory.slice(-20);
+  }, [displayHistory, tabDefinition]);
+
+  const sparklineHistory = useMemo(() => displayHistory.slice(-18), [displayHistory]);
+  const latestEntry = useMemo(() => displayHistory[displayHistory.length - 1], [displayHistory]);
 
   // Analysis table metrics calculation
   const dailyMaxPm25 = useMemo(() => findDailyPeak(displayHistory, "pm25"), [displayHistory]);
   const dailyMaxPm10 = useMemo(() => findDailyPeak(displayHistory, "pm10"), [displayHistory]);
 
   const compactInsightRows = useMemo(() => {
+    const currentPm25 = getLatestNonNull(displayHistory, "pm25", 0);
+    const currentPm25Aqi = getLatestNonNull(displayHistory, "pm25_aqi", 0);
+    const currentPm10 = getLatestNonNull(displayHistory, "pm10", 0);
+    const currentPm10Aqi = getLatestNonNull(displayHistory, "pm10_aqi", 0);
+
     if (selectedTab === "pm10") {
       const pm10Stats = getStatWindow(chartHistory, "pm10");
-      const pm10Trend = getTrend(chartHistory, "pm10", latestEntry.pm10);
+      const pm10Trend = getTrend(chartHistory, "pm10", currentPm10);
       const volatility = describeVolatility(pm10Stats.max - pm10Stats.min, 10, 25);
 
       return [
         {
           metric: "Chất lượng không khí",
-          value: getAirQualityStatus(latestEntry.pm10_aqi),
+          value: getAirQualityStatus(currentPm10Aqi),
           note: `Chất lượng không khí theo chỉ số PM10 AQI.`,
         },
         {
@@ -562,13 +646,13 @@ export const AirSensorDashboard = ({
       ];
     } else {
       const pm25Stats = getStatWindow(chartHistory, "pm25");
-      const pm25Trend = getTrend(chartHistory, "pm25", latestEntry.pm25);
+      const pm25Trend = getTrend(chartHistory, "pm25", currentPm25);
       const volatility = describeVolatility(pm25Stats.max - pm25Stats.min, 5, 15);
 
       return [
         {
           metric: "Chất lượng không khí",
-          value: getAirQualityStatus(latestEntry.pm25_aqi),
+          value: getAirQualityStatus(currentPm25Aqi),
           note: `Chất lượng không khí theo chỉ số PM2.5 AQI.`,
         },
         {
@@ -588,7 +672,7 @@ export const AirSensorDashboard = ({
         },
       ];
     }
-  }, [selectedTab, chartHistory, latestEntry, dailyMaxPm10, dailyMaxPm25]);
+  }, [selectedTab, chartHistory, displayHistory, dailyMaxPm10, dailyMaxPm25]);
 
   // Chart configuration
   const chartData = useMemo(() => {
@@ -598,6 +682,7 @@ export const AirSensorDashboard = ({
         label: dataset.label,
         data: chartHistory.map((entry) => entry[dataset.key]),
         borderColor: dataset.color,
+        spanGaps: true,
         backgroundColor: (context) => {
           const { chart } = context;
           const { ctx, chartArea } = chart;
@@ -817,13 +902,13 @@ export const AirSensorDashboard = ({
           {/* Cards section (Top display) */}
           <div className="mt-6 grid gap-4 sm:mt-8 md:grid-cols-2">
             <PM10Card
-              pm10={latestEntry.pm10}
-              aqi={latestEntry.pm10_aqi}
+              pm10={getLatestNonNull(displayHistory, "pm10", 0)}
+              aqi={getLatestNonNull(displayHistory, "pm10_aqi", 0)}
               history={pm10HistoryData}
             />
             <PM25Card
-              pm25={latestEntry.pm25}
-              aqi={latestEntry.pm25_aqi}
+              pm25={getLatestNonNull(displayHistory, "pm25", 0)}
+              aqi={getLatestNonNull(displayHistory, "pm25_aqi", 0)}
               history={pm25HistoryData}
             />
           </div>
@@ -860,19 +945,10 @@ export const AirSensorDashboard = ({
                 </div>
 
                 <div className="flex w-fit flex-wrap gap-2">
-                  <MetricSummaryCard
-                    title="Hiện tại"
+                  <CombinedMetricSummaryCard
                     datasets={tabDefinition.datasets}
                     latestEntry={latestEntry}
                     chartHistory={chartHistory}
-                    mode="current"
-                  />
-                  <MetricSummaryCard
-                    title="Xu hướng thay đổi"
-                    datasets={tabDefinition.datasets}
-                    latestEntry={latestEntry}
-                    chartHistory={chartHistory}
-                    mode="trend"
                   />
                 </div>
 

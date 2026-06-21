@@ -13,7 +13,7 @@ const METRICS = [
   { key: "UVB", label: "UVB", unit: "", decimals: 2 },
   { key: "broadband", label: "Broadband", unit: "", decimals: 0 },
   { key: "infrared", label: "Infrared", unit: "", decimals: 0 },
-  { key: "sound", label: "Âm thanh", unit: "dB", decimals: 1 },
+  { key: "sound", label: "Âm thanh", unit: "RMS", decimals: 1 },
 ];
 
 const formatMetric = (value, metricKey) => {

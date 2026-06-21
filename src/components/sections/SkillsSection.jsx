@@ -3,18 +3,16 @@ import { cn } from "@/lib/utils";
 import {
   DiJavascript1,
   DiReact,
-  DiNodejs,
-  DiMongodb,
   DiGit,
-  DiJava,
 } from "react-icons/di";
 import {
   SiMysql,
-  SiExpress,
-  SiDocker,
   SiHtml5,
   SiArduino,
   SiCplusplus,
+  SiNestjs,
+  SiPlatformio,
+  SiEspressif,
 } from "react-icons/si";
 
 const skills = [
@@ -24,23 +22,29 @@ const skills = [
   { name: "React", icon: DiReact, category: "frontend" },
 
   // Backend
-  { name: "Node.js", icon: DiNodejs, category: "backend" },
-  { name: "Express", icon: SiExpress, category: "backend" },
-  { name: "MongoDB", icon: DiMongodb, category: "backend" },
+  { name: "NestJS", icon: SiNestjs, category: "backend" },
   { name: "MySQL", icon: SiMysql, category: "backend" },
 
   // Embedded Systems
   { name: "Arduino", icon: SiArduino, category: "embedded" },
-  { name: "ESP32", icon: SiArduino, category: "embedded" },
+  { name: "ESP32", icon: SiEspressif, category: "embedded" },
+  { name: "ESP8266", icon: SiEspressif, category: "embedded" },
+  { name: "PlatformIO", icon: SiPlatformio, category: "embedded" },
   { name: "C/C++", icon: SiCplusplus, category: "embedded" },
 
   // Tools & Others
   { name: "Git", icon: DiGit, category: "tools" },
-  { name: "Docker", icon: SiDocker, category: "tools" },
-  { name: "Java", icon: DiJava, category: "tools" },
 ];
 
 const categories = ["all", "frontend", "backend", "embedded", "tools"];
+
+const categoryLabels = {
+  all: "Tất cả",
+  frontend: "Front-end",
+  backend: "Back-end",
+  embedded: "Hệ thống nhúng",
+  tools: "Công cụ & Khác",
+};
 
 export const SkillsSection = () => {
   const [activeCategory, setActiveCategory] = useState("all");
@@ -52,7 +56,7 @@ export const SkillsSection = () => {
     <section id="skills" className="py-24 px-4 relative bg-secondary/30">
       <div className="container mx-auto max-w-5xl">
         <h2 className="text-3xl md:text-4xl font-bold mb-12 text-center">
-          My <span className="text-primary"> Skills</span>
+          Công nghệ <span className="text-primary"> Sử dụng</span>
         </h2>
 
         <div className="flex flex-wrap justify-center gap-4 mb-12">
@@ -61,13 +65,13 @@ export const SkillsSection = () => {
               key={key}
               onClick={() => setActiveCategory(category)}
               className={cn(
-                "px-5 py-2 rounded-full transition-colors duration-300 capitalize",
+                "px-5 py-2 rounded-full transition-colors duration-300",
                 activeCategory === category
                   ? "bg-primary text-primary-foreground"
-                  : "bg-secondary/70 text-forefround hover:bd-secondary"
+                  : "bg-secondary/70 text-foreground hover:bg-secondary"
               )}
             >
-              {category}
+              {categoryLabels[category] || category}
             </button>
           ))}
         </div>
@@ -92,3 +96,4 @@ export const SkillsSection = () => {
     </section>
   );
 };
+
